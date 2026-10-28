@@ -18,11 +18,14 @@ async function until(fn) {
 
 test('real clients join, play, keep hands private, reconnect, and restore after restart',async t=>{
   const dataDir=await mkdtemp(path.join(tmpdir(),'uno-party-test-'));
-  let server=await createGameServer({dataDir,botDelay:100000});let clients=[];
+  let server=await createGameServer({dataDir,botDelay:100000,dealDelay:0});let clients=[];
   t.after(async()=>{for(const c of clients)c.disconnect();await server.close();await rm(dataDir,{recursive:true,force:true});});
   const address=await server.listen(0,'127.0.0.1'),url=`http://127.0.0.1:${address.port}`;
   const response=await fetch(url+'/health');assert.deepEqual(await response.json(),{ok:true});
   const html=await fetch(url+'/');assert.equal(html.status,200);assert.match(await html.text(),/UNO PARTY/);
+  const music=await fetch(url+'/assets/audio/party-loop.mp3',{headers:{Range:'bytes=0-4095'}});
+  assert.equal(music.status,206);assert.match(music.headers.get('content-type'),/audio\/mpeg/);assert.equal((await music.arrayBuffer()).byteLength,4096);
+  const background=await fetch(url+'/assets/table-room.webp');assert.equal(background.status,200);assert.match(background.headers.get('content-type'),/image\/webp/);
   const alice=await connect(url),bob=await connect(url);clients.push(alice,bob);
   const created=await request(alice,'room:create',{name:'Alice',avatar:0});assert.equal(created.ok,true);assert.match(created.code,/^[A-Z2-9]{6}$/);
   const joined=await request(bob,'room:join',{code:created.code,name:'Bob',avatar:2});assert.equal(joined.ok,true);
@@ -44,7 +47,7 @@ test('real clients join, play, keep hands private, reconnect, and restore after 
   assert.equal((await request(resumed,'reaction',{emoji:'🔥'})).ok,true);
   assert.equal((await request(resumed,'reaction',{emoji:'<script>'})).ok,false);
   for(const c of clients)c.disconnect();clients=[];await server.close();
-  server=await createGameServer({dataDir,botDelay:100000});const nextAddress=await server.listen(0,'127.0.0.1');
+  server=await createGameServer({dataDir,botDelay:100000,dealDelay:0});const nextAddress=await server.listen(0,'127.0.0.1');
   const restored=await connect(`http://127.0.0.1:${nextAddress.port}`);clients.push(restored);
   assert.equal((await request(restored,'room:resume',{code:created.code,token:created.token})).ok,true);
   assert.equal(restored.view.phase,'playing');assert.deepEqual(restored.view.hand.map(c=>c.id).sort(),beforeReconnect);

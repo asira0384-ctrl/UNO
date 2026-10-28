@@ -3,7 +3,17 @@ import { randomInt, randomUUID } from 'node:crypto';
 export const COLORS = ['red', 'yellow', 'green', 'blue'];
 export const COLOR_NAMES = { red: '赤', yellow: '黄', green: '緑', blue: '青' };
 export const CARD_NAMES = { skip: 'スキップ', reverse: 'リバース', draw2: '+2', wild: 'ワイルド', wild4: '+4' };
-export const DEFAULT_SETTINGS = { stackDraw: false, turnSeconds: 30, startingCards: 7 };
+export const DEFAULT_SETTINGS = { stackDraw: false, turnSeconds: 30, startingCards: 7,
+  maxPlayers: 4, roundMinutes: 5, mode: 'solo', sevenSwap: false, zeroSeven: false, forcePlay: false };
+
+export function normalizeSettings(input = {}) {
+  const s = input && typeof input === 'object' ? input : {};
+  const mode = s.mode === 'teams' ? 'teams' : 'solo';
+  return { stackDraw: s.stackDraw === true, turnSeconds: [15,30,60].includes(s.turnSeconds) ? s.turnSeconds : 30,
+    startingCards: 7, maxPlayers: mode === 'teams' ? 4 : [2,3,4].includes(s.maxPlayers) ? s.maxPlayers : 4,
+    roundMinutes: [0,3,5].includes(s.roundMinutes) ? s.roundMinutes : 5, mode,
+    sevenSwap: s.sevenSwap === true, zeroSeven: s.zeroSeven === true, forcePlay: s.forcePlay === true };
+}
 
 export function deck() {
   const cards = [];
@@ -33,14 +43,12 @@ export function createPlayer(name, avatar = 0, bot = false) {
 }
 
 export function createRoom(code, host, settings = {}) {
-  return { code, hostId: host.id, phase: 'lobby', players: [host], settings: {
-    stackDraw: settings.stackDraw === true,
-    turnSeconds: [15,30,60].includes(settings.turnSeconds) ? settings.turnSeconds : 30,
-    startingCards: 7,
-  }, createdAt: Date.now(), updatedAt: Date.now(), round: 0, revision: 0,
+  return { code, hostId: host.id, phase: 'lobby', players: [host], settings: normalizeSettings(settings),
+    createdAt: Date.now(), updatedAt: Date.now(), round: 0, revision: 0,
     deck: [], discard: [], currentIndex: 0, direction: 1, color: 'red',
     drawnCardId: null, drawStack: 0, drawType: null, pendingUno: null, winnerId: null,
-    turnEndsAt: null, paused: false, events: [], rankings: [] };
+    turnEndsAt: null, roundEndsAt: null, dealUntil: 0, draw: false, winnerTeam: null,
+    paused: false, pauseStartedAt: null, events: [], rankings: [] };
 }
 
 export function event(room, type, text, details = {}) {
@@ -83,10 +91,11 @@ function give(room, player, count) {
   return cards;
 }
 
-export function startGame(room) {
+export function startGame(room, dealDelay = 0) {
   if (room.phase === 'playing') throw new Error('すでに対戦中です');
   if (room.players.length < 2) throw new Error('2人以上でスタートできます。CPUも追加できます');
   if (room.players.length > 4) throw new Error('最大4人で遊べます');
+  if (room.settings.mode === 'teams' && room.players.length !== 4) throw new Error('2vs2は4人でスタートします。空席にCPUを追加してね');
   room.deck = deck(); room.discard = [];
   for (const player of room.players) {
     player.hand = take(room, room.settings.startingCards);
@@ -99,13 +108,16 @@ export function startGame(room) {
   room.phase = 'playing'; room.direction = 1;
   room.currentIndex = room.round % room.players.length;
   room.round++; room.drawnCardId = null; room.drawStack = 0; room.drawType = null;
-  room.pendingUno = null; room.winnerId = null; room.rankings = []; room.paused = false;
-  room.turnEndsAt = Date.now() + room.settings.turnSeconds * 1000;
+  room.pendingUno = null; room.winnerId = null; room.winnerTeam = null; room.draw = false; room.rankings = []; room.paused = false;
+  room.pauseStartedAt = null; room.dealUntil = dealDelay ? Date.now() + dealDelay : 0;
+  const startsAt = Date.now() + dealDelay;
+  room.turnEndsAt = startsAt + room.settings.turnSeconds * 1000;
+  room.roundEndsAt = room.settings.roundMinutes ? startsAt + room.settings.roundMinutes * 60000 : null;
   event(room, 'start', `ラウンド ${room.round} スタート！`);
 }
 
 export function canPlay(room, player, card, ignoreDrawn = false) {
-  if (room.phase !== 'playing' || currentPlayer(room)?.id !== player.id || !card) return false;
+  if (room.phase !== 'playing' || room.dealUntil > Date.now() || currentPlayer(room)?.id !== player.id || !card) return false;
   if (!ignoreDrawn && room.drawnCardId && card.id !== room.drawnCardId) return false;
   if (room.drawStack) return room.settings.stackDraw && card.value === room.drawType;
   const top = room.discard.at(-1);
@@ -116,6 +128,7 @@ export function canPlay(room, player, card, ignoreDrawn = false) {
 function assertTurn(room, playerId) {
   if (room.phase !== 'playing') throw new Error('現在は対戦中ではありません');
   if (room.paused) throw new Error('対戦相手の再接続を待っています');
+  if (room.dealUntil > Date.now()) throw new Error('カードを配っています。もう少し待ってね');
   const player = currentPlayer(room);
   if (player?.id !== playerId) throw new Error('あなたの番を待ってね');
   return player;
@@ -125,19 +138,35 @@ export function cardPoints(card) {
   return card.color === 'wild' ? 50 : /^\d$/.test(card.value) ? Number(card.value) : 20;
 }
 
-function finish(room, winner) {
-  room.phase = 'finished'; room.winnerId = winner.id; room.turnEndsAt = null;
+function finish(room, winner, timed = false, tied = false) {
+  room.phase = 'finished'; room.winnerId = tied ? null : winner.id; room.turnEndsAt = null;
+  room.roundEndsAt = null; room.dealUntil = 0; room.draw = tied;
+  room.winnerTeam = !tied && room.settings.mode === 'teams' ? room.players.indexOf(winner) % 2 : null;
   room.pendingUno = null;
-  const points = room.players.filter(p => p.id !== winner.id)
+  const winning = p => !tied && (room.winnerTeam === null ? p.id === winner.id : room.players.indexOf(p) % 2 === room.winnerTeam);
+  const points = tied ? 0 : room.players.filter(p => !winning(p))
     .reduce((sum, p) => sum + p.hand.reduce((s, c) => s + cardPoints(c), 0), 0);
-  winner.score += points;
+  for (const player of room.players) if (winning(player)) player.score += points;
   room.rankings = room.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar,
-    cards: p.hand.length, points: p.hand.reduce((s,c) => s + cardPoints(c), 0), score: p.score }))
-    .sort((a,b) => (a.id === winner.id ? -1 : b.id === winner.id ? 1 : a.points - b.points));
-  event(room, 'win', `${winner.name} の勝利！ +${points}pt`, { actorId: winner.id, points });
+    cards: p.hand.length, points: p.hand.reduce((s,c) => s + cardPoints(c), 0), score: p.score,
+    won: winning(p), team: room.settings.mode === 'teams' ? room.players.indexOf(p) % 2 : null }))
+    .sort((a,b) => Number(b.won) - Number(a.won) || a.points - b.points);
+  const name = room.winnerTeam === null ? winner.name : `チーム${room.winnerTeam + 1}`;
+  event(room, 'win', tied ? '時間切れ。同点で引き分け！' : `${timed ? '時間切れ！ ' : ''}${name} の勝利！ +${points}pt`,
+    { actorId: room.winnerId, points, timed, draw: tied, winnerTeam: room.winnerTeam });
 }
 
-export function playCard(room, playerId, cardId, chosenColor, declared = false) {
+export function finishOnTime(room) {
+  if (room.phase !== 'playing') return;
+  const ranked = room.players.map(p => ({ p, points: p.hand.reduce((n,c) => n + cardPoints(c),0) }))
+    .sort((a,b) => a.points - b.points || a.p.hand.length - b.p.hand.length);
+  if (room.settings.mode === 'teams') {
+    const team = [0,0]; for (let i=0;i<room.players.length;i++) team[i%2] += room.players[i].hand.reduce((n,c) => n+cardPoints(c),0);
+    finish(room,room.players[team[0] <= team[1] ? 0 : 1],true,team[0] === team[1]);
+  } else finish(room,ranked[0].p,true,ranked[0].points === ranked[1].points && ranked[0].p.hand.length === ranked[1].p.hand.length);
+}
+
+export function playCard(room, playerId, cardId, chosenColor, declared = false, swapTargetId) {
   const player = assertTurn(room, playerId);
   const index = player.hand.findIndex(c => c.id === cardId);
   if (index === -1) throw new Error('そのカードは手札にありません');
@@ -148,6 +177,9 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false) 
     throw new Error(room.drawnCardId ? '今引いたカードだけ出せます' : '同じ色・数字・記号のカードを出してね');
   }
   if (card.color === 'wild' && !COLORS.includes(chosenColor)) throw new Error('次の色を選んでね');
+  const swap = card.value === '7' && (room.settings.sevenSwap || room.settings.zeroSeven) && player.hand.length > 1;
+  const swapTarget = swap ? room.players.find(p => p.id === swapTargetId && p.id !== playerId) : null;
+  if (swap && !swapTarget) throw new Error('手札を交換する相手を選んでね');
 
   room.pendingUno = null;
   player.hand.splice(index, 1);
@@ -155,7 +187,6 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false) 
   const didUno = declared || player.unoArmed;
   player.unoArmed = false;
   player.uno = player.hand.length === 1 && didUno;
-  if (player.hand.length === 1 && !player.uno) room.pendingUno = { playerId: player.id };
 
   let steps = 1;
   let targetId;
@@ -175,8 +206,24 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false) 
       steps = 2;
     }
   }
-  event(room, 'play', `${player.name} が ${COLOR_NAMES[room.color]}の${CARD_NAMES[card.value] || card.value} を出した`,
-    { actorId: player.id, card, color: room.color, targetId, amount, uno: player.uno });
+  let exchange;
+  if (player.hand.length && swapTarget) {
+    [player.hand,swapTarget.hand] = [swapTarget.hand,player.hand];
+    swapTarget.uno = swapTarget.hand.length === 1; swapTarget.unoArmed = false;
+    exchange = { kind: 'swap', targetId: swapTarget.id, text: `${swapTarget.name} と手札を交換！` };
+  } else if (player.hand.length && card.value === '0' && room.settings.zeroSeven) {
+    const hands = room.players.map(p => p.hand);
+    for (let i=0;i<room.players.length;i++) {
+      const to = (i + room.direction + room.players.length) % room.players.length;
+      room.players[to].hand = hands[i]; room.players[to].unoArmed = false;
+      room.players[to].uno = hands[i].length === 1;
+    }
+    exchange = { kind: 'rotate', text: '全員の手札が次の人へ移動！' };
+  }
+  player.uno = player.hand.length === 1 && (exchange ? true : didUno);
+  if (player.hand.length === 1 && !player.uno) room.pendingUno = { playerId: player.id };
+  event(room, 'play', `${player.name} が ${COLOR_NAMES[room.color]}の${CARD_NAMES[card.value] || card.value} を出した${exchange ? ` · ${exchange.text}` : ''}`,
+    { actorId: player.id, card, color: room.color, targetId, amount, uno: player.uno, exchange });
   if (!player.hand.length) { finish(room, player); return; }
   advance(room, steps);
 }
@@ -184,17 +231,28 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false) 
 export function drawCard(room, playerId, timedOut = false) {
   const player = assertTurn(room, playerId);
   if (room.drawnCardId) {
-    if (timedOut) return passTurn(room, playerId, true);
+    if (timedOut) {
+      if (room.settings.forcePlay) {
+        const c = player.hand.find(c => c.id === room.drawnCardId);
+        return playCard(room,playerId,c.id,bestColor(player.hand),false,room.players[nextIndex(room)].id);
+      }
+      return passTurn(room, playerId, true);
+    }
     throw new Error('引いたカードを出すか、パスしてね');
   }
   room.pendingUno = null;
   const penalty = room.drawStack;
   const cards = give(room, player, penalty || 1);
   room.drawStack = 0; room.drawType = null;
-  const playable = !penalty && !timedOut && cards[0] && canPlay(room, player, cards[0], true);
+  const candidatePlayable = !penalty && cards[0] && canPlay(room, player, cards[0], true);
+  const playable = !timedOut && candidatePlayable;
   if (playable) room.drawnCardId = cards[0].id;
   event(room, 'draw', `${player.name} が${cards.length}枚引いた${timedOut ? '（時間切れ）' : ''}`,
     { actorId: player.id, amount: cards.length, timedOut, playable: Boolean(playable) });
+  if (timedOut && room.settings.forcePlay && candidatePlayable) {
+    room.drawnCardId = cards[0].id;
+    return playCard(room,playerId,cards[0].id,bestColor(player.hand),false,room.players[nextIndex(room)].id);
+  }
   if (!playable) advance(room);
   else room.turnEndsAt = Date.now() + room.settings.turnSeconds * 1000;
 }
@@ -202,6 +260,7 @@ export function drawCard(room, playerId, timedOut = false) {
 export function passTurn(room, playerId, timedOut = false) {
   const player = assertTurn(room, playerId);
   if (!room.drawnCardId) throw new Error('出せるカードがなければ山札から引いてね');
+  if (room.settings.forcePlay) throw new Error('強制プレイONです。引いたカードを出してね');
   room.pendingUno = null;
   event(room, 'pass', `${player.name} がパスした${timedOut ? '（時間切れ）' : ''}`, { actorId: player.id });
   advance(room);
@@ -245,7 +304,8 @@ export function botMove(room) {
   });
   if (playable.length) {
     const card = playable[0];
-    playCard(room, player.id, card.id, bestColor(player.hand), true);
+    const target = room.players.filter(p => p.id !== player.id).sort((a,b) => a.hand.length - b.hand.length)[0];
+    playCard(room, player.id, card.id, bestColor(player.hand), true, target?.id);
   } else if (room.drawnCardId) passTurn(room, player.id);
   else drawCard(room, player.id);
 }
@@ -254,12 +314,14 @@ export function publicState(room, playerId) {
   const self = room.players.find(p => p.id === playerId);
   return { code: room.code, hostId: room.hostId, phase: room.phase, round: room.round,
     revision: room.revision, settings: room.settings, selfId: playerId,
-    players: room.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar, bot: p.bot,
-      connected: p.connected, count: p.hand.length, uno: p.uno, score: p.score })),
+    players: room.players.map((p,i) => ({ id: p.id, name: p.name, avatar: p.avatar, bot: p.bot,
+      connected: p.connected, count: p.hand.length, uno: p.uno, score: p.score, team: room.settings.mode === 'teams' ? i % 2 : null })),
     hand: self?.hand || [], playableIds: self?.hand.filter(c => canPlay(room, self, c)).map(c => c.id) || [],
     top: room.discard.at(-1) || null, color: room.color, direction: room.direction,
     currentId: currentPlayer(room)?.id, drawnCardId: self?.id === currentPlayer(room)?.id ? room.drawnCardId : null,
     drawStack: room.drawStack, pendingUnoId: room.pendingUno?.playerId || null,
-    unoArmed: self?.unoArmed || false, winnerId: room.winnerId, rankings: room.rankings,
-    events: room.events, turnEndsAt: room.turnEndsAt, serverNow: Date.now(), paused: room.paused };
+    unoArmed: self?.unoArmed || false, winnerId: room.winnerId, winnerTeam: room.winnerTeam ?? null, draw: room.draw || false,
+    rankings: room.rankings.map(p => ({ ...p, won: p.won ?? p.id === room.winnerId })),
+    events: room.events, turnEndsAt: room.turnEndsAt, roundEndsAt: room.roundEndsAt,
+    dealUntil: room.dealUntil, serverNow: Date.now(), paused: room.paused };
 }

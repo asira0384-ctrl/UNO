@@ -1,16 +1,40 @@
-// Original, procedurally composed music. No external audio, trackers, or samples.
+// Original music is delivered as MP3 for reliable iPhone media playback.
+// Effects use Web Audio, activated directly from a tap/click and resumed after interruptions.
 export class PartyAudio {
   constructor() {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem('uno-audio') || '{}'); } catch {}
-    this.settings = { music: true, effects: true, musicVolume: 34, effectsVolume: 65, ...saved };
+    const volume=(v,f)=>Number.isFinite(Number(v))?Math.max(0,Math.min(100,Number(v))):f;
+    this.settings = { music: saved.music !== false, effects: saved.effects !== false,
+      musicVolume: volume(saved.musicVolume,34), effectsVolume: volume(saved.effectsVolume,65) };
     this.ctx = null; this.timer = null; this.step = 0; this.nextAt = 0;
-    this.visible = true;
+    this.visible = typeof document === 'undefined' || !document.hidden;
+    this.hasGesture = false; this.bgm = null; this.testAudio = null; this.bgmError = '';
+    this.contextError = ''; this.listeners = new Set();
   }
-  async unlock() {
+  subscribe(fn) { this.listeners.add(fn); return ()=>this.listeners.delete(fn); }
+  notify() { for(const fn of this.listeners)fn(this.status()); }
+  status() {
+    return { activated: this.hasGesture, musicPlaying: !!this.bgm && !this.bgm.paused && !this.bgmError,
+      context: this.ctx?.state || 'not-started', error: this.bgmError || this.contextError,
+      needsTap: !this.hasGesture || (this.settings.music && this.settings.musicVolume>0 && (!this.bgm || this.bgm.paused)) ||
+        (this.settings.effects && this.ctx?.state !== 'running') };
+  }
+  configureSession() {
+    // iOS defaults Web Audio to "ambient", which obeys the ringer switch.
+    // Playback is appropriate here because the player explicitly enables game audio.
+    try { if(navigator.audioSession && navigator.audioSession.type !== 'playback')navigator.audioSession.type='playback'; } catch {}
+  }
+  unlock({gesture=false}={}) {
+    if(gesture)this.hasGesture=true;
+    if(!this.hasGesture || !this.visible)return false;
+    this.configureSession();
+    // Call media play synchronously inside the trusted gesture, before any await.
+    if(this.settings.music && this.settings.musicVolume>0)this.startMusic();
     try {
-      if (!this.ctx) {
+      if (!this.ctx || this.ctx.state === 'closed') {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.ctx.onstatechange=()=>{if(this.ctx.state==='running'){this.contextError='';this.apply();}this.notify();};
         const compressor = this.ctx.createDynamicsCompressor();
         compressor.threshold.value = -14; compressor.ratio.value = 5;
         compressor.connect(this.ctx.destination);
@@ -21,17 +45,27 @@ export class PartyAudio {
         for (let i=0; i<values.length; i++) values[i] = Math.random()*2-1;
         this.apply();
       }
-      if (this.ctx.state === 'suspended') await this.ctx.resume();
-      if (this.settings.music && this.visible) this.startMusic();
-    } catch { /* A browser without audio can still play the game. */ }
+      // Prime the graph during touchend/click. A resume promise may remain pending
+      // on iOS; it must never prevent the independent native BGM from starting.
+      const source=this.ctx.createBufferSource();source.buffer=this.ctx.createBuffer(1,1,this.ctx.sampleRate);
+      source.connect(this.ctx.destination);source.start(0);source.onended=()=>source.disconnect();
+      if (this.ctx.state !== 'running') {
+        Promise.resolve(this.ctx.resume()).then(()=>{this.apply();this.notify();},()=>{this.contextError='効果音は画面をタップして再開できます';this.notify();});
+      }
+      this.apply();
+    } catch { this.contextError='このブラウザでは効果音を開始できません'; }
+    this.notify();return true;
   }
   set(key, value) {
-    this.settings[key] = value;
+    if(!['music','effects','musicVolume','effectsVolume'].includes(key))return;
+    this.settings[key] = key.endsWith('Volume') ? Math.max(0,Math.min(100,Number(value)||0)) : value===true;
     try { localStorage.setItem('uno-audio', JSON.stringify(this.settings)); } catch {}
     this.apply();
-    if (this.settings.music && this.visible) { this.unlock(); } else this.stopMusic();
+    if (this.settings.music && this.settings.musicVolume>0 && this.visible) this.unlock(); else this.stopMusic();
+    this.notify();
   }
   apply() {
+    if(this.bgm)this.bgm.volume=this.settings.musicVolume/100*.65;
     if (!this.ctx) return;
     const at = this.ctx.currentTime;
     this.musicGain.gain.setTargetAtTime(this.settings.music ? this.settings.musicVolume / 100 * .47 : 0, at,.035);
@@ -55,28 +89,30 @@ export class PartyAudio {
     source.connect(filter); filter.connect(gain); gain.connect(channel); source.start(when); source.stop(when+length);
   }
   startMusic() {
-    if (!this.ctx || this.timer || this.ctx.state !== 'running') return;
-    this.nextAt=this.ctx.currentTime+.07;
-    const schedule=()=>{
-      if (!this.ctx || this.ctx.state !== 'running') return;
-      while (this.nextAt < this.ctx.currentTime+.24) {
-        this.musicStep(this.step++,this.nextAt); this.nextAt+=60/112/4;
+    if(!this.hasGesture || !this.visible || !this.settings.music || this.settings.musicVolume===0)return;
+    try {
+      if(!this.bgm) {
+        this.bgm=new Audio('/assets/audio/party-loop.mp3?v=1.1');
+        this.bgm.loop=true;this.bgm.preload='auto';this.bgm.setAttribute('playsinline','');
+        this.bgm.addEventListener('playing',()=>{this.bgmError='';this.notify();});
+        this.bgm.addEventListener('pause',()=>this.notify());
+        this.bgm.addEventListener('error',()=>{this.bgmError='音声ファイルを読み込めません。ページを再読み込みしてね';this.notify();});
       }
-    };
-    schedule(); this.timer=setInterval(schedule,75);
+      this.apply();
+      if(this.bgm.paused)Promise.resolve(this.bgm.play()).then(()=>{
+        if(!this.visible || !this.settings.music || this.settings.musicVolume===0)this.bgm.pause();
+        this.bgmError='';this.notify();
+      },()=>{this.bgmError='「音を開始」をタップしてね';this.notify();});
+    } catch { this.bgmError='音楽の再生を開始できません';this.notify(); }
   }
-  stopMusic() { clearInterval(this.timer); this.timer=null; if(this.musicGain && this.ctx) this.musicGain.gain.setTargetAtTime(0,this.ctx.currentTime,.04); }
-  musicStep(step,t) {
-    const i=step%16, bar=Math.floor(step/16)%4;
-    const chords=[[146.83,174.61,220,293.66],[116.54,146.83,174.61,233.08],[130.81,174.61,220,261.63],[130.81,164.81,196,261.63]];
-    const chord=chords[bar], beat=60/112;
-    if (i%4===0) this.tone(125,t,.17,'sine',.55,this.musicGain,42);
-    if (i===4 || i===12) { this.hiss(t,.11,.11,1400); this.tone(185,t,.09,'triangle',.1); }
-    if (i%2===0) this.hiss(t,.035,i%4===2?.075:.04,6800);
-    if ([0,3,6,8,11,14].includes(i)) this.tone(chord[0]/2*(i===14?2:1),t,.19,'triangle',.3);
-    if ([2,6,10,14].includes(i)) for(const f of chord.slice(1)) this.tone(f*2,t,.15,'sine',.065);
-    const melody=[0,-1,2,-1,1,-1,3,2,-1,-1,2,-1,1,0,-1,2];
-    if(melody[i]>=0) this.tone(chord[melody[i]]*4,t+(i%2?.012:0),beat*.42,'triangle',.075);
+  stopMusic() { this.bgm?.pause(); }
+  async test() {
+    this.unlock({gesture:true});
+    try {
+      this.testAudio ||= new Audio('/assets/audio/sound-test.mp3?v=1.1');
+      this.testAudio.setAttribute('playsinline','');this.testAudio.volume=.65;this.testAudio.currentTime=0;
+      await this.testAudio.play();return true;
+    } catch { return false; }
   }
   effect(name) {
     if(!this.ctx || !this.settings.effects || this.ctx.state!=='running') return;
@@ -96,7 +132,10 @@ export class PartyAudio {
   }
   visibility(visible) {
     this.visible=visible;
-    if(!visible) { this.stopMusic(); this.ctx?.suspend().catch(()=>{}); }
-    else if(this.ctx) { this.apply(); this.unlock(); }
+    if(!visible) {
+      this.stopMusic();this.testAudio?.pause();
+      try { Promise.resolve(this.ctx?.suspend()).then(()=>{if(this.visible)this.unlock();},()=>{}); } catch {}
+    } else { this.apply();this.unlock(); }
+    this.notify();
   }
 }

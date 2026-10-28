@@ -6,7 +6,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRoom, createPlayer, startGame, playCard, drawCard, passTurn, callUno,
-  catchUno, publicState, currentPlayer, botMove, event } from './src/game.js';
+  catchUno, publicState, currentPlayer, botMove, event, normalizeSettings, finishOnTime } from './src/game.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -30,7 +30,9 @@ export async function createGameServer(options = {}) {
     const stored = JSON.parse(await fs.readFile(saveFile, 'utf8'));
     for (const room of stored.rooms || []) {
       if (!room.code || Date.now() - room.updatedAt > 24 * 60 * 60 * 1000) continue;
+      room.settings = normalizeSettings(room.settings);
       room.paused = room.phase === 'playing';
+      room.pauseStartedAt ||= Date.now();
       for (const p of room.players) { p.connected = false; p.lastSeen = Date.now(); }
       rooms.set(room.code, room);
     }
@@ -91,7 +93,7 @@ export async function createGameServer(options = {}) {
     const p = currentPlayer(room);
     const key = `${p?.id}:${room.drawnCardId || ''}:${room.discard.at(-1)?.id || ''}`;
     const existing = botTimers.get(room.code);
-    if (room.phase !== 'playing' || room.paused || !p?.bot) {
+    if (room.phase !== 'playing' || room.paused || room.dealUntil > Date.now() || !p?.bot) {
       clearTimeout(existing?.timer); botTimers.delete(room.code); return;
     }
     if (existing?.key === key) return;
@@ -108,7 +110,9 @@ export async function createGameServer(options = {}) {
   }
   function setPaused(room) {
     const hasOnlineHuman = room.players.some(p => !p.bot && p.connected);
-    if (room.phase === 'playing' && !hasOnlineHuman) room.paused = true;
+    if (room.phase === 'playing' && !hasOnlineHuman && !room.paused) {
+      room.paused = true; room.pauseStartedAt = Date.now();
+    }
   }
   function detach(socket, explicit = false) {
     const room = rooms.get(socket.data.code);
@@ -137,7 +141,13 @@ export async function createGameServer(options = {}) {
     socket.join(room.code); members.set(p.id, socket.id);
     p.connected = true; p.lastSeen = Date.now();
     if (p.reserved) { p.bot = false; p.reserved = false; }
-    if (room.paused) { room.paused = false; room.turnEndsAt = Date.now() + room.settings.turnSeconds * 1000; }
+    if (room.paused) {
+      const pausedFor = Math.max(0,Date.now() - (room.pauseStartedAt || Date.now()));
+      if (room.roundEndsAt) room.roundEndsAt += pausedFor;
+      if (room.dealUntil) room.dealUntil += pausedFor;
+      room.paused = false; room.pauseStartedAt = null;
+      room.turnEndsAt = Math.max(Date.now(),room.dealUntil || 0) + room.settings.turnSeconds * 1000;
+    }
     if (!room.players.some(x => x.id === room.hostId && !x.bot && x.connected)) room.hostId = p.id;
   }
   function auth(socket) {
@@ -150,7 +160,7 @@ export async function createGameServer(options = {}) {
     if (room.hostId !== player.id) throw new Error('ホストだけが操作できます');
   }
   function addBot(room) {
-    if (room.players.length >= 4) throw new Error('ルームは満員です');
+    if (room.players.length >= room.settings.maxPlayers) throw new Error('ルームは満員です');
     const index = room.players.filter(p => p.bot).length;
     let name = BOT_NAMES[index];
     if (room.players.some(p => p.name === name)) name = `CPU ${index + 1}`;
@@ -186,10 +196,13 @@ export async function createGameServer(options = {}) {
       const p = createPlayer(cleanName(payload.name), avatarId(payload.avatar));
       const room = createRoom(code, p, payload.settings);
       rooms.set(code, room); bind(socket, room, p);
-      const cpu = Math.max(0, Math.min(3, Math.floor(Number(payload.cpu) || 0)));
+      const cpu = Math.max(0, Math.min(room.settings.maxPlayers-1, Math.floor(Number(payload.cpu) || 0)));
       for (let i = 0; i < cpu; i++) addBot(room);
       event(room, 'join', `${p.name} のルームへようこそ`);
-      if (payload.quick === true) { while (room.players.length < 4) addBot(room); startGame(room); }
+      if (payload.quick === true) {
+        while (room.players.length < room.settings.maxPlayers) addBot(room);
+        startGame(room,options.dealDelay ?? 3000);
+      }
       publish(room);
       return { code, playerId: p.id, token: p.token };
     });
@@ -199,7 +212,7 @@ export async function createGameServer(options = {}) {
       const room = rooms.get(code);
       if (!room) throw new Error('ルームが見つかりません。コードを確認してね');
       if (room.phase !== 'lobby') throw new Error('このルームは対戦中です。次のゲームまで待ってね');
-      if (room.players.length >= 4) throw new Error('ルームは満員です');
+      if (room.players.length >= room.settings.maxPlayers) throw new Error('ルームは満員です');
       const p = createPlayer(cleanName(payload.name), avatarId(payload.avatar));
       room.players.push(p); bind(socket, room, p);
       event(room, 'join', `${p.name} が参加した`, { actorId: p.id }); publish(room);
@@ -233,12 +246,13 @@ export async function createGameServer(options = {}) {
     on('room:settings', payload => {
       const {room,player} = auth(socket); requireHost(room,player);
       if (room.phase !== 'lobby') throw new Error('待機ルームで設定してね');
-      room.settings.stackDraw = payload.stackDraw === true;
-      if ([15,30,60].includes(payload.turnSeconds)) room.settings.turnSeconds = payload.turnSeconds;
+      const nextSettings = normalizeSettings({...room.settings,...payload});
+      if (nextSettings.maxPlayers < room.players.length) throw new Error('参加中の人数より少なくできません。先にCPUやプレイヤーを外してね');
+      room.settings = nextSettings;
       event(room, 'settings', 'ルールが変更されました'); publish(room);
     });
     on('game:start', () => {
-      const {room,player} = auth(socket); requireHost(room,player); startGame(room); publish(room);
+      const {room,player} = auth(socket); requireHost(room,player); startGame(room,options.dealDelay ?? 3000); publish(room);
     });
     on('room:lobby', () => {
       const {room,player} = auth(socket); requireHost(room,player);
@@ -248,7 +262,7 @@ export async function createGameServer(options = {}) {
       event(room, 'lobby', '次のゲームの準備をしよう'); publish(room);
     });
     for (const [name,action] of Object.entries({
-      'game:play': (r,p,d) => playCard(r,p.id,d.cardId,d.color,d.uno === true),
+      'game:play': (r,p,d) => playCard(r,p.id,d.cardId,d.color,d.uno === true,d.targetId),
       'game:draw': (r,p) => drawCard(r,p.id),
       'game:pass': (r,p) => passTurn(r,p.id),
       'game:uno': (r,p) => callUno(r,p.id),
@@ -271,6 +285,11 @@ export async function createGameServer(options = {}) {
         clearTimeout(botTimers.get(code)?.timer); botTimers.delete(code); rooms.delete(code); persist(); continue;
       }
       if (room.phase !== 'playing' || room.paused) continue;
+      if (room.dealUntil) {
+        if (Date.now() < room.dealUntil) continue;
+        room.dealUntil = 0; event(room,'ready','配札完了！ ゲームスタート'); publish(room);
+      }
+      if (room.roundEndsAt && Date.now() >= room.roundEndsAt) { finishOnTime(room); publish(room); continue; }
       let changed = false;
       for (const p of room.players) {
         if (!p.bot && !p.connected && Date.now() - p.lastSeen > 30000) {
