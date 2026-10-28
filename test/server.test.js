@@ -25,8 +25,6 @@ test('real clients join, play, keep hands private, reconnect, and restore after 
   const html=await fetch(url+'/');assert.equal(html.status,200);assert.match(await html.text(),/UNO PARTY/);
   const music=await fetch(url+'/assets/audio/party-loop.mp3',{headers:{Range:'bytes=0-4095'}});
   assert.equal(music.status,206);assert.match(music.headers.get('content-type'),/audio\/mpeg/);assert.equal((await music.arrayBuffer()).byteLength,4096);
-  const voices=await fetch(url+'/assets/audio/voice-pack.mp3',{headers:{Range:'bytes=0-4095'}});
-  assert.equal(voices.status,206);assert.match(voices.headers.get('content-type'),/audio\/mpeg/);assert.equal((await voices.arrayBuffer()).byteLength,4096);
   const background=await fetch(url+'/assets/table-room.webp');assert.equal(background.status,200);assert.match(background.headers.get('content-type'),/image\/webp/);
   const alice=await connect(url),bob=await connect(url);clients.push(alice,bob);
   const created=await request(alice,'room:create',{name:'Alice',avatar:0});assert.equal(created.ok,true);assert.match(created.code,/^[A-Z2-9]{6}$/);
@@ -38,6 +36,10 @@ test('real clients join, play, keep hands private, reconnect, and restore after 
   await until(()=>bob.view.settings.botDifficulty==='easy');
   assert.equal((await request(alice,'game:start')).ok,true);await until(()=>bob.view?.phase==='playing');
   assert.equal(alice.view.hand.length,7);assert.equal(bob.view.hand.length,7);
+  const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGxkAAAAASUVORK5CYII=';
+  assert.equal((await request(alice,'player:profile',{name:'Alice',avatar:4,image})).ok,true);
+  await until(()=>bob.view.players.find(p=>p.id===created.playerId)?.image===image);
+  assert.equal((await request(alice,'player:profile',{name:'Alice',image:'data:image/svg+xml;base64,PHN2Zz4='})).ok,false);
   assert.equal(JSON.stringify(alice.view).includes(bob.view.hand[0].id),false);
   assert.equal(alice.view.players.some(p=>'token' in p||'hand' in p),false);
   const bad=await request(bob,'game:play',{cardId:bob.view.hand[0].id});assert.equal(bad.ok,false);
@@ -58,6 +60,7 @@ test('real clients join, play, keep hands private, reconnect, and restore after 
   assert.equal((await request(restored,'room:resume',{code:created.code,token:created.token})).ok,true);
   assert.equal(restored.view.phase,'playing');assert.deepEqual(restored.view.hand.map(c=>c.id).sort(),beforeReconnect);
   assert.equal(restored.view.settings.botDifficulty,'easy');assert.ok(restored.view.turnNumber>=1);
+  assert.equal(restored.view.players.find(p=>p.id===created.playerId).image,image);
   const intruder=await connect(`http://127.0.0.1:${nextAddress.port}`);clients.push(intruder);
   assert.equal((await request(intruder,'room:resume',{code:created.code,token:'wrong'})).ok,false);
 });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PartyAudio } from '../public/audio.js';
 
-function setup(t,{state='suspended',pending=false,saved={},loadVoices=false}={}){
+function setup(t,{state='suspended',pending=false,saved={},loadVoices=false,speech=false}={}){
   const keys=['window','navigator','Audio','localStorage','document','fetch'];const old=new Map(keys.map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
   const param=()=>({value:0,setValueAtTime(){},setTargetAtTime(){},exponentialRampToValueAtTime(){}});
   const node=()=>({connect(){},disconnect(){},start(){},stop(){},gain:param(),frequency:param(),threshold:param(),ratio:param()});
@@ -20,10 +20,12 @@ function setup(t,{state='suspended',pending=false,saved={},loadVoices=false}={})
     pause(){this.paused=true;this.dispatchEvent(new Event('pause'));}
   }
   const storage={value:JSON.stringify(saved),getItem(){return this.value;},setItem(k,v){this.value=v;}};
-  Object.defineProperties(globalThis,{window:{value:{AudioContext:Context},configurable:true},navigator:{value:{audioSession:{type:'auto'}},configurable:true},Audio:{value:Media,configurable:true},localStorage:{value:storage,configurable:true},document:{value:{hidden:false},configurable:true}});
+  const synth={calls:[],getVoices:()=>[{name:'日本語',lang:'ja-JP',localService:true},{name:'English',lang:'en-US',localService:true}],speak(u){this.calls.push(u);},resume(){},cancel(){this.cancelled=true;},addEventListener(){}};
+  class Utterance{constructor(text){this.text=text;}}
+  Object.defineProperties(globalThis,{window:{value:{AudioContext:Context,...(speech?{speechSynthesis:synth,SpeechSynthesisUtterance:Utterance}:{})},configurable:true},navigator:{value:{audioSession:{type:'auto'}},configurable:true},Audio:{value:Media,configurable:true},localStorage:{value:storage,configurable:true},document:{value:{hidden:false},configurable:true}});
   if(loadVoices)Object.defineProperty(globalThis,'fetch',{value:async()=>({ok:true,arrayBuffer:async()=>new ArrayBuffer(8)}),configurable:true});
   t.after(()=>{for(const [key,value]of old)if(value)Object.defineProperty(globalThis,key,value);else delete globalThis[key];});
-  return new PartyAudio();
+  const audio=new PartyAudio();t.after(()=>audio.cancelVoices());return audio;
 }
 const settle=async()=>{await Promise.resolve();await Promise.resolve();};
 test('audio stays idle until a player gesture',t=>{const a=setup(t);assert.equal(a.unlock(),false);assert.equal(a.bgm,null);assert.equal(a.ctx,null);});
@@ -48,33 +50,38 @@ test('a rejected native play can be retried by a tap',async t=>{
 test('native sound test runs even with both sound preferences off',async t=>{const a=setup(t,{saved:{music:false,effects:false}});assert.equal(await a.test(),true);assert.equal(a.testAudio.playCalls,1);assert.equal(a.bgm,null);});
 test('persisted volume values cannot break the audio graph',t=>{const a=setup(t,{saved:{musicVolume:900,effectsVolume:-10}});assert.equal(a.settings.musicVolume,100);assert.equal(a.settings.effectsVolume,0);a.unlock({gesture:true});assert.doesNotThrow(()=>a.effect('click'));});
 
-test('bundled voice calls decode and queue one at a time, including selected colors',async t=>{
-  const a=setup(t,{loadVoices:true});a.unlock({gesture:true});await a.voiceLoading;
-  assert.ok(a.voiceBuffer);assert.equal(a.announce('red'),true);assert.equal(a.voiceBusy.name,'red');
-  assert.equal(a.announce('red'),false);a.announce('reverse');a.announce('uno');assert.equal(a.voiceQueue.length,2);
-  a.voiceBusy.source.onended();assert.equal(a.voiceBusy.name,'reverse');
-  a.voiceBusy.source.onended();assert.equal(a.voiceBusy.name,'uno');
-  a.voiceBusy.source.onended();assert.equal(a.voiceBusy,null);assert.equal(a.voiceQueue.length,0);
+test('game calls use a Japanese voice and readable katakana, not English',async t=>{
+  const a=setup(t,{speech:true});a.unlock({gesture:true});
+  assert.equal(a.announce('red'),true);assert.equal(a.voiceBusy.utterance.text,'レッド！');
+  assert.equal(a.voiceBusy.utterance.lang,'ja-JP');assert.equal(a.voiceBusy.utterance.voice.lang,'ja-JP');
+  a.announce('reverse');a.announce('uno');a.voiceBusy.utterance.onend();assert.equal(a.voiceBusy.utterance.text,'リバース！');
+  a.voiceBusy.utterance.onend();assert.equal(a.voiceBusy.utterance.text,'ウノ！');a.cancelVoices();
 });
-test('voice can play when effects and music are disabled, and obeys its own volume and switch',async t=>{
-  const a=setup(t,{loadVoices:true,saved:{music:false,effects:false,voiceVolume:72}});a.unlock({gesture:true});await a.voiceLoading;
-  assert.equal(a.announce('blue'),true);assert.equal(a.settings.voiceVolume,72);assert.equal(a.bgm,null);
+test('extra narrations and turn sounds are unavailable',t=>{
+  const a=setup(t,{speech:true});a.unlock({gesture:true});let notes=0;a.tone=()=>notes++;a.hiss=()=>notes++;
+  for(const name of ['click','turn','start','error','uno'])a.effect(name);assert.equal(notes,0);
+  for(const name of ['your-turn','hurry','ten-seconds','draw-four','skip','time-up'])assert.equal(a.announce(name),false);
+});
+test('voice obeys its own switch and volume when music and effects are off',t=>{
+  const a=setup(t,{speech:true,saved:{music:false,effects:false,voiceVolume:72}});a.unlock({gesture:true});
+  assert.equal(a.announce('blue'),true);assert.equal(a.voiceBusy.utterance.volume,.72);assert.equal(a.bgm,null);
   a.set('voices',false);assert.equal(a.voiceBusy,null);assert.equal(a.announce('uno'),false);
   a.set('voices',true);a.set('voiceVolume',0);assert.equal(a.announce('uno'),false);
 });
-test('backgrounding cancels current and queued calls instead of replaying them on return',async t=>{
-  const a=setup(t,{loadVoices:true});a.unlock({gesture:true});await a.voiceLoading;a.announce('yellow');a.announce('uno');
-  a.visibility(false);assert.equal(a.voiceBusy,null);assert.equal(a.voiceQueue.length,0);assert.equal(a.announce('red'),false);
-  a.visibility(true);assert.equal(a.voiceBusy,null);await settle();
+test('speech remains independent of an interrupted Web Audio context',t=>{
+  const a=setup(t,{speech:true,pending:true});a.unlock({gesture:true});assert.equal(a.ctx.state,'suspended');
+  assert.equal(a.announce('green'),true);assert.equal(a.voiceBusy.utterance.text,'グリーン！');
 });
-test('a primed native voice channel works even if Web Audio stays interrupted',async t=>{
-  const a=setup(t,{pending:true});a.unlock({gesture:true});await settle();
-  assert.equal(a.ctx.state,'suspended');assert.equal(a.announce('green'),true);await settle();
-  assert.equal(a.voiceBusy.native,true);assert.equal(a.voiceMedia.paused,false);a.cancelVoices();
-  assert.equal(a.voiceMedia.paused,true);
+test('hiding the page cancels current and queued words',t=>{
+  const a=setup(t,{speech:true});a.unlock({gesture:true});a.announce('yellow');a.announce('uno');a.visibility(false);
+  assert.equal(a.voiceBusy,null);assert.equal(a.voiceQueue.length,0);assert.equal(a.synth.cancelled,true);assert.equal(a.announce('red'),false);
 });
-test('timer alerts and game effects have independent switches',t=>{
-  const a=setup(t);a.unlock({gesture:true});let notes=0;a.tone=()=>notes++;
-  a.set('alerts',false);a.effect('tick');a.effect('warning');assert.equal(notes,0);
-  a.effect('turn');assert.ok(notes>0);notes=0;a.set('alerts',true);a.effect('tick-fast');assert.equal(notes,2);
+test('a missing Japanese voice does not fall back to native English',t=>{
+  const a=setup(t,{speech:true});a.synth.getVoices=()=>[{lang:'en-US',name:'English'}];a.unlock({gesture:true});a.announce('red');
+  assert.equal(a.voiceBusy,null);assert.match(a.voiceError,/日本語/);
+});
+test('last-second ticks have a separate switch and paper effects stay quiet',t=>{
+  const a=setup(t);a.unlock({gesture:true});let notes=0;a.tone=()=>notes++;a.hiss=()=>notes++;
+  a.set('alerts',false);a.effect('tick');assert.equal(notes,0);a.effect('deal');assert.equal(notes,2);
+  notes=0;a.set('alerts',true);a.effect('tick');assert.equal(notes,1);
 });

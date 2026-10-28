@@ -1,3 +1,4 @@
+import { profileImage } from './src/profile.js';
 import express from 'express';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
@@ -70,7 +71,7 @@ export async function createGameServer(options = {}) {
   app.use(express.static(path.join(ROOT, 'public'), { etag: true, maxAge: 0 }));
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
-    maxHttpBufferSize: 16 * 1024, pingInterval: 20000, pingTimeout: 25000,
+    maxHttpBufferSize: 48 * 1024, pingInterval: 20000, pingTimeout: 25000,
     allowRequest(req, callback) {
       const origin = req.headers.origin;
       if (!origin) return callback(null, true);
@@ -144,7 +145,7 @@ export async function createGameServer(options = {}) {
     if (room.paused) {
       const pausedFor = Math.max(0,Date.now() - (room.pauseStartedAt || Date.now()));
       if (room.roundEndsAt) room.roundEndsAt += pausedFor;
-      if (room.dealUntil) room.dealUntil += pausedFor;
+      if (room.dealUntil) {room.dealUntil += pausedFor;if(room.dealStartedAt)room.dealStartedAt += pausedFor;}
       room.paused = false; room.pauseStartedAt = null;
       room.turnEndsAt = Math.max(Date.now(),room.dealUntil || 0) + room.settings.turnSeconds * 1000;
     }
@@ -193,7 +194,7 @@ export async function createGameServer(options = {}) {
       if (rooms.size >= 500) throw new Error('ただいま混み合っています。少し待ってね');
       let code;
       do { code = Array.from({ length: 6 }, () => ALPHABET[randomInt(ALPHABET.length)]).join(''); } while (rooms.has(code));
-      const p = createPlayer(cleanName(payload.name), avatarId(payload.avatar));
+      const p = createPlayer(cleanName(payload.name), avatarId(payload.avatar), false, profileImage(payload.image));
       const room = createRoom(code, p, payload.settings);
       rooms.set(code, room); bind(socket, room, p);
       const cpu = Math.max(0, Math.min(room.settings.maxPlayers-1, Math.floor(Number(payload.cpu) || 0)));
@@ -201,7 +202,7 @@ export async function createGameServer(options = {}) {
       event(room, 'join', `${p.name} のルームへようこそ`);
       if (payload.quick === true) {
         while (room.players.length < room.settings.maxPlayers) addBot(room);
-        startGame(room,options.dealDelay ?? 3000);
+        startGame(room,options.dealDelay ?? 3600);
       }
       publish(room);
       return { code, playerId: p.id, token: p.token };
@@ -213,7 +214,7 @@ export async function createGameServer(options = {}) {
       if (!room) throw new Error('ルームが見つかりません。コードを確認してね');
       if (room.phase !== 'lobby') throw new Error('このルームは対戦中です。次のゲームまで待ってね');
       if (room.players.length >= room.settings.maxPlayers) throw new Error('ルームは満員です');
-      const p = createPlayer(cleanName(payload.name), avatarId(payload.avatar));
+      const p = createPlayer(cleanName(payload.name), avatarId(payload.avatar), false, profileImage(payload.image));
       room.players.push(p); bind(socket, room, p);
       event(room, 'join', `${p.name} が参加した`, { actorId: p.id }); publish(room);
       return { code, playerId: p.id, token: p.token };
@@ -226,6 +227,12 @@ export async function createGameServer(options = {}) {
       if (!room || !p) throw new Error('前のルームは終了しました');
       bind(socket, room, p); event(room, 'online', `${p.name} が戻った`, { actorId: p.id }); publish(room);
       return { code: room.code, playerId: p.id, token: p.token };
+    });
+    on('player:profile', payload => {
+      const {room,player} = auth(socket);
+      const image=profileImage(payload.image);
+      player.name=cleanName(payload.name);player.avatar=avatarId(payload.avatar);player.image=image;
+      event(room,'profile','プレイヤーのアイコンが変更されました',{actorId:player.id});publish(room);
     });
     on('room:leave', () => { detach(socket, true); return {}; });
     on('room:add-bot', () => {
@@ -252,7 +259,7 @@ export async function createGameServer(options = {}) {
       event(room, 'settings', 'ルールが変更されました'); publish(room);
     });
     on('game:start', () => {
-      const {room,player} = auth(socket); requireHost(room,player); startGame(room,options.dealDelay ?? 3000); publish(room);
+      const {room,player} = auth(socket); requireHost(room,player); startGame(room,options.dealDelay ?? 3600); publish(room);
     });
     on('room:lobby', () => {
       const {room,player} = auth(socket); requireHost(room,player);
@@ -304,7 +311,7 @@ export async function createGameServer(options = {}) {
       if (changed) publish(room); else scheduleBot(room);
     }
     for (const [ip,limit] of createLimits) if (Date.now() - limit.at > 120000) createLimits.delete(ip);
-  }, 1000);
+  }, 250);
   tick.unref?.();
 
   return { app, httpServer, io, rooms,

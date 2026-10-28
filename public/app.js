@@ -1,12 +1,15 @@
-import { PartyAudio } from './audio.js?v=1.2';
-import { TurnFeedback, turnStatus, eventVoices } from './feedback.js?v=1.2';
+import { PartyAudio } from './audio.js?v=1.3';
+import { TurnFeedback, turnStatus, eventVoices } from './feedback.js?v=1.3';
+import { fitHand, dealSequence } from './layout.js?v=1.3';
+import { cardMarkup as cardHTML } from './cards.js?v=1.3';
 
 const $ = (query,root=document) => root.querySelector(query);
 const app=$('#app'), modalRoot=$('#modal-root'), fxRoot=$('#fx-root');
 const sound=new PartyAudio();
 const feedback=new TurnFeedback();
 const DIFFICULTIES={easy:'かんたん',normal:'普通',hard:'強い'};
-const AVATARS=['😼','👻','🤖','🦊','🐼','👽','🐲','🐸'];
+const AVATARS=Array.from({length:8},(_,i)=>`/assets/avatars/robot-${i+1}.svg`);
+const REACTIONS=[['👋','よろしく！'],['😎','ナイス！'],['😂','いいね！'],['😱','びっくり！'],['🔥','勝負！'],['👏','お見事！']];
 const AVATAR_COLORS=['#f9d1b4','#dbd1f5','#c9dbe7','#ffdbb0','#e8dfd1','#cde3ba','#cce3dd','#d8e4a8'];
 const COLORS=['red','yellow','green','blue'];
 const COLOR_NAMES={red:'赤',yellow:'黄',green:'緑',blue:'青'};
@@ -49,14 +52,17 @@ const paths={
   fullscreen:'M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6',
   link:'m10 13 4-4m-6 7-1 1a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m0 2 1-1a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0',
   check:'m5 12 4 4L19 6',
+  trophy:'M8 3h8v7a4 4 0 0 1-8 0V3Zm0 2H4v3c0 3 2 4 4 4m8-7h4v3c0 3-2 4-4 4m-4 2v5m-4 2h8',
+  book:'M12 5v15M3 4c4-1 6-1 9 1 3-2 5-2 9-1v15c-4-1-6-1-9 1-3-2-5-2-9-1V4Z',
+  settings:'m10 2 4 0 .7 3 2 .9 2.7-1 2 3.4-2 2.2.1 2.3 2.1 2-2 3.5-2.8-.8-2 1-.6 3h-4l-.7-3-2-1-2.7.8-2-3.4 2-2.1-.1-2.3-2.1-2.2 2-3.4 2.8 1 2-1L10 2Zm6 10a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
+  image:'M3 3h18v18H3V3Zm0 13 5-5 5 5 3-3 5 5M15 8h.01',
+  chat:'M3 4h18v12H8l-5 5V4Z',
 };
 function icon(name,cls='') { return `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]||paths.sparkle}"/></svg>`; }
-function avatar(player,cls='') { const a=player?.avatar??0;return `<span class="avatar ${cls}" style="--avatar-bg:${AVATAR_COLORS[a]||AVATAR_COLORS[0]}" aria-hidden="true">${AVATARS[a]||AVATARS[0]}</span>`; }
-function cardHTML(card,cls='') {
-  if(!card)return '';
-  const back=card.back,value=back?'UNO!':(SYMBOLS[card.value]||card.value);
-  const corner=card.value==='wild'?'✦':value;
-  return `<span aria-hidden="true" class="card ${back?'card-back':`${esc(card.color)} ${esc(card.value)}`} ${cls}"><span class="card-face"><span class="card-oval"></span><span class="card-corner top">${esc(corner)}</span><span class="card-value ${SYMBOLS[card.value]?'symbol':''}">${esc(value)}</span><span class="card-corner bottom">${esc(corner)}</span></span></span>`;
+function avatar(player,cls='') {
+  const a=Number.isInteger(player?.avatar)?player.avatar:0;
+  const image=typeof player?.image==='string'&&/^data:image\/(png|jpeg|webp);base64,/.test(player.image)&&player.image.length<=24000?player.image:AVATARS[a]||AVATARS[0];
+  return `<span class="avatar ${cls}" aria-hidden="true"><img src="${esc(image)}" alt="" draggable="false"></span>`;
 }
 function toast(message,error=false) {
   const el=$('#toast');el.textContent=message;el.classList.add('visible');clearTimeout(toastTimer);
@@ -74,12 +80,12 @@ function houseArt(kind='create') {
 }
 
 function renderHeader() {
-  const p={avatar:profile.avatar};
-  $('.site-header').innerHTML=`<button class="header-profile" data-action="profile" aria-label="プレイヤー設定">${avatar(p)}<span><strong>${esc(profile.name)}</strong><small>カードパーティーへようこそ</small></span><span class="profile-edit">✎</span></button><button class="brand" data-action="home" aria-label="UNO PARTY ホーム"><span class="brand-mark">UNO!</span><span class="brand-sub">PARTY</span></button><div class="header-right"><span class="score-chip" title="この端末の勝利数">🏆 <b>${stats.wins||0}</b><small>WIN</small></span><span class="connection" id="connection"><i></i><span>接続中…</span></span><button class="icon-button" id="sound-button" data-action="audio" aria-label="サウンド設定">${icon('sound')}</button></div>`;
+  const p=profile;
+  $('.site-header').innerHTML=`<button class="header-profile" data-action="profile" aria-label="プレイヤー設定">${avatar(p)}<span><strong>${esc(profile.name)}</strong><small>カードパーティーへようこそ</small></span><span class="profile-edit">✎</span></button><button class="brand" data-action="home" aria-label="UNO PARTY ホーム"><span class="brand-mark">UNO!</span><span class="brand-sub">PARTY</span></button><div class="header-right"><span class="score-chip" title="この端末の勝利数">${icon('trophy')} <b>${stats.wins||0}</b><small>WIN</small></span><span class="connection" id="connection"><i></i><span>接続中…</span></span><button class="icon-button" id="sound-button" data-action="audio" aria-label="サウンド設定">${icon('sound')}</button></div>`;
 }
 
 function homeHTML() {
-  return `<section class="home-screen"><div class="home-intro"><span class="lobby-eyebrow">PLAY TOGETHER, ANYWHERE.</span><h1>さあ、もう一勝負。</h1><p>いつもの友達と。ちょっと空いた時間に。</p></div><div class="mode-cards"><button class="mode-card classic-mode" data-action="classic" aria-label="クラシック CPUと練習"><span class="mode-pill">CPUと練習</span><span class="mode-illustration card-illustration">${cardHTML({color:'blue',value:'reverse'})}${cardHTML({color:'red',value:'7'})}${cardHTML({color:'wild',value:'wild4'})}</span><strong>クラシック</strong><small>ひとりで気軽にプレイ</small><span class="mode-go">PLAY ${icon('arrow')}</span></button><button class="mode-card friends-mode" data-action="friends" aria-label="友達と遊ぶ"><span class="mode-pill">ONLINE · 2〜4人</span><span class="mode-illustration">${houseArt('create')}</span><strong>友達と遊ぶ</strong><small>ルームをつくって、みんなで集合</small><span class="mode-go">LET'S PARTY ${icon('arrow')}</span></button></div><div class="home-bottom"><button class="lobby-utility" data-action="help"><span>📖</span>遊び方</button><button class="start-audio-button" data-action="enable-audio">${icon('sound')}<span data-audio-home>音ありで遊ぶ</span></button><button class="lobby-utility" data-action="audio"><span>⚙</span>設定</button></div><span class="fan-note">UNO風オンラインカードゲーム · ダウンロード不要</span></section>`;
+  return `<section class="home-screen"><div class="home-intro"><span class="lobby-eyebrow">PLAY TOGETHER, ANYWHERE.</span><h1>さあ、もう一勝負。</h1><p>いつもの友達と。ちょっと空いた時間に。</p></div><div class="mode-cards"><button class="mode-card classic-mode" data-action="classic" aria-label="クラシック CPUと練習"><span class="mode-pill">CPUと練習</span><span class="mode-illustration card-illustration">${cardHTML({color:'blue',value:'reverse'})}${cardHTML({color:'red',value:'7'})}${cardHTML({color:'wild',value:'wild4'})}</span><strong>クラシック</strong><small>ひとりで気軽にプレイ</small><span class="mode-go">PLAY ${icon('arrow')}</span></button><button class="mode-card friends-mode" data-action="friends" aria-label="友達と遊ぶ"><span class="mode-pill">ONLINE · 2〜4人</span><span class="mode-illustration">${houseArt('create')}</span><strong>友達と遊ぶ</strong><small>ルームをつくって、みんなで集合</small><span class="mode-go">LET'S PARTY ${icon('arrow')}</span></button></div><div class="home-bottom"><button class="lobby-utility" data-action="help"><span>${icon('book')}</span>遊び方</button><button class="start-audio-button" data-action="enable-audio">${icon('sound')}<span data-audio-home>音ありで遊ぶ</span></button><button class="lobby-utility" data-action="audio"><span>${icon('settings')}</span>設定</button></div><span class="fan-note">UNO風オンラインカードゲーム · ダウンロード不要</span></section>`;
 }
 
 function friendsHTML() {
@@ -112,7 +118,7 @@ function waitingHTML() {
 
 function miniHand(p) {
   const n=Math.min(p.count,7);
-  return `<div class="mini-hand" aria-label="${esc(p.name)}の手札${p.count}枚">${Array.from({length:n},(_,i)=>`<span class="mini-wrapper" style="--angle:${(i-(n-1)/2)*3}deg">${cardHTML({back:true},'mini-card')}</span>`).join('')}<span class="opponent-count">${p.count}</span></div>`;
+  return `<div class="mini-hand" aria-label="${esc(p.name)}の手札${p.count}枚">${Array.from({length:n},(_,i)=>`<span class="mini-wrapper" style="--angle:${(i-(n-1)/2)*3}deg;--mini-i:${i}" data-deal-index="${i}" ${state.dealUntil>Date.now()+serverOffset?'data-dealt="false"':''}>${cardHTML({back:true},'mini-card')}</span>`).join('')}<span class="opponent-count">${p.count}</span></div>`;
 }
 
 function opponentHTML(p,position) {
@@ -126,22 +132,23 @@ function gameHTML() {
   const mine=turn.mine;
   const dealing=state.dealUntil>Date.now()+serverOffset;
   const playable=new Set(state.playableIds),hand=[...state.hand];
-  if(sortCards)hand.sort((a,b)=>(COLORS.indexOf(a.color)<0?4:COLORS.indexOf(a.color))-(COLORS.indexOf(b.color)<0?4:COLORS.indexOf(b.color))||String(a.value).localeCompare(String(b.value),undefined,{numeric:true}));
+  if(sortCards&&!dealing)hand.sort((a,b)=>(COLORS.indexOf(a.color)<0?4:COLORS.indexOf(a.color))-(COLORS.indexOf(b.color)<0?4:COLORS.indexOf(b.color))||String(a.value).localeCompare(String(b.value),undefined,{numeric:true}));
+  const layout=fitHand(hand.length,innerWidth,innerHeight);
   const myIndex=state.players.findIndex(p=>p.id===state.selfId);
   const others=state.players.map((p,i)=>({p,relative:(i-myIndex+state.players.length)%state.players.length})).filter(x=>x.p.id!==state.selfId).sort((a,b)=>a.relative-b.relative);
   const positions=others.length===1?['top']:others.length===2?['top-left','top-right']:['left','top','right'];
   const hint=dealing?'カードを配っています…':state.phase==='finished'?'ナイスゲーム！':!connected?'再接続しています…':state.paused?'対戦相手を待っています…':mine?(state.drawStack?`+${state.drawStack}！ 引くか、同じドローを重ねよう`:state.drawnCardId?(state.settings.forcePlay?'引いたカードを出してね':'引いたカードを出す？ パスもできるよ'):playable.size?'光るカードをタップして出そう':'山札をタップして1枚引こう'):`${current?.name||''} の番`;
-  return `<section class="game-screen players-${state.players.length} ${dealing?'dealing':''} ${mine?'my-turn':''}"><div class="table-scene"></div><div class="game-topbar"><button class="table-back" data-action="leave" aria-label="ルームを退出">${icon('back')}</button><span class="match-clock" aria-label="試合の残り時間">${icon('clock')}<small>試合</small><b data-match-clock>--:--</b></span><span class="round-chip">ROUND ${state.round}${state.settings.mode==='teams'?' · 2 vs 2':''}</span><div class="game-tools"><button class="table-icon" data-action="log" aria-label="ゲームの履歴">${icon('log')}</button><button class="table-icon" data-action="audio" aria-label="サウンド設定">${icon('sound')}</button><button class="table-icon" data-action="table-settings" aria-label="ゲーム設定">⚙</button></div></div>
+  return `<section style="--hand-height:${layout.height}px" class="game-screen players-${state.players.length} ${dealing?'dealing':''} ${hand.length>20?'hand-crowded':''} ${mine?'my-turn':''}"><div class="table-scene"></div><div class="game-topbar"><button class="table-back" data-action="leave" aria-label="ルームを退出">${icon('back')}</button><span class="match-clock" aria-label="試合の残り時間">${icon('clock')}<small>試合</small><b data-match-clock>--:--</b></span><span class="round-chip">ROUND ${state.round}${state.settings.mode==='teams'?' · 2 vs 2':''}</span><div class="game-tools"><button class="table-icon" data-action="log" aria-label="ゲームの履歴">${icon('log')}</button><button class="table-icon" data-action="audio" aria-label="サウンド設定">${icon('sound')}</button><button class="table-icon" data-action="table-settings" aria-label="ゲーム設定">${icon('settings')}</button></div></div>
   ${others.map((x,i)=>opponentHTML(x.p,positions[i])).join('')}
   <button class="draw-deck" data-action="draw" ${!mine||!!state.drawnCardId||!connected||dealing?'disabled':''} aria-label="${state.drawStack?`${state.drawStack}枚引く`:'山札から1枚引く'}">${cardHTML({back:true})}${mine&&!state.drawnCardId&&!dealing?'<span class="deck-arrow">⬇</span>':''}<span class="deck-caption">${state.drawStack?`+${state.drawStack}`:'DRAW'}</span></button>
-  <div class="center-play-area" style="--table-color:${SWATCHES[state.color]}"><div class="direction-orbit ${state.direction===-1?'reverse':''}" aria-label="${state.direction===1?'時計回り':'反時計回り'}"><svg viewBox="0 0 280 280" fill="none"><g stroke="currentColor" stroke-width="9" stroke-linecap="round"><path d="M47 112a98 98 0 0 1 169-37"/><path d="m196 43 24 34-38 5" stroke-linejoin="round"/><path d="M233 168A98 98 0 0 1 64 205"/><path d="m84 237-24-34 38-5" stroke-linejoin="round"/></g></svg></div><div class="discard-slot" aria-label="場のカード ${COLOR_NAMES[state.color]} ${esc(CARD_NAMES[state.top?.value]||state.top?.value)}">${cardHTML(state.top)}</div><span class="current-color" style="--swatch:${SWATCHES[state.color]}">${SHAPES[state.color]} ${COLOR_NAMES[state.color]}</span>${state.drawStack?`<span class="stack-warning">+${state.drawStack} STACK!</span>`:''}</div>
-  <div class="self-player ${mine?'active':''}" data-self-player><div class="avatar-wrap">${avatar(me)}${mine?'<span class="turn-counter" data-turn-counter></span>':''}</div><strong class="player-name">${esc(me?.name)}</strong><span class="player-status">${me?.team!==null?`TEAM ${me.team+1}`:'YOU'} · ${hand.length}枚</span><button class="reaction-button" data-action="emojis" aria-label="リアクション">☺</button>${me?.uno?'<span class="uno-bubble">UNO!</span>':''}</div>
-  <div class="my-zone"><div class="turn-panel ${mine?'is-mine':''}" data-turn-panel><span class="turn-panel-icon" aria-hidden="true">${mine?'▶':'◷'}</span><strong data-turn-title role="status" aria-live="polite">${esc(turn.title)}</strong><span class="turn-remaining" data-turn-remaining>あと <b data-turn-seconds>${turn.seconds}</b> 秒</span><span class="turn-progress"><i data-turn-progress></i></span></div><div class="hand-message ${mine?'mine':''}">${mine&&!dealing?'<span class="your-turn-dot"></span>':''}${esc(hint)}</div><div class="hand-scroll"><div class="hand-rack" style="--overlap:${hand.length>10?'48px':'38px'}">${hand.map((c,i)=>`<button class="hand-card ${playable.has(c.id)&&mine?'playable':'unplayable'} ${state.drawnCardId===c.id?'drawn':''}" style="--i:${i+1};--fan:${Math.max(-7,Math.min(7,(i-(hand.length-1)/2)*1.4))}deg" data-action="play" data-card="${c.id}" aria-label="${COLOR_NAMES[c.color]||''}${CARD_NAMES[c.value]||c.value} ${playable.has(c.id)&&mine?'出せます':'今は出せません'}" aria-disabled="${!playable.has(c.id)||!mine}" ${!mine||dealing?'disabled':''}>${cardHTML(c)}</button>`).join('')}</div></div><div class="hand-footer"><button class="sort-button" data-action="sort" aria-label="手札の色順並び替え" aria-pressed="${sortCards}">${icon('sort')}</button><span>${hand.length>7?'手札は左右にスワイプできるよ':state.settings.zeroSeven?'0で全員移動・7で手札交換':state.settings.sevenSwap?'7で手札交換':'同じ色・数字・記号を合わせよう'}</span>${mine&&state.drawnCardId&&!state.settings.forcePlay?'<button class="pass-button" data-action="pass">パスする</button>':''}</div></div>
+  <div class="center-play-area" style="--table-color:${SWATCHES[state.color]}"><div class="direction-orbit ${state.direction===-1?'reverse':''}" aria-label="${state.direction===1?'時計回り':'反時計回り'}"><svg viewBox="0 0 280 280" fill="none"><g stroke="currentColor" stroke-width="9" stroke-linecap="round"><path d="M47 112a98 98 0 0 1 169-37"/><path d="m196 43 24 34-38 5" stroke-linejoin="round"/><path d="M233 168A98 98 0 0 1 64 205"/><path d="m84 237-24-34 38-5" stroke-linejoin="round"/></g></svg></div><div class="discard-slot" aria-label="場のカード ${COLOR_NAMES[state.color]} ${esc(CARD_NAMES[state.top?.value]||state.top?.value)}">${cardHTML(state.top,'',state.top?.color==='wild'?state.color:null)}</div><span class="current-color" style="--swatch:${SWATCHES[state.color]}">${SHAPES[state.color]} ${COLOR_NAMES[state.color]}</span>${state.drawStack?`<span class="stack-warning">+${state.drawStack} STACK!</span>`:''}</div>
+  <div class="self-player ${mine?'active':''}" data-self-player><button class="avatar-wrap" data-action="profile" aria-label="アイコンを変更">${avatar(me)}${mine?'<span class="turn-counter" data-turn-counter></span>':''}</button><strong class="player-name">${esc(me?.name)}</strong><span class="player-status">${me?.team!==null?`TEAM ${me.team+1}`:'YOU'} · ${hand.length}枚</span><button class="reaction-button" data-action="emojis" aria-label="リアクション">${icon('chat')}</button>${me?.uno?'<span class="uno-bubble">UNO!</span>':''}</div>
+  <div class="my-zone"><div class="turn-panel ${mine?'is-mine':''}" data-turn-panel><strong data-turn-title role="status" aria-live="polite">${esc(turn.title)}</strong><span data-turn-remaining><b data-turn-seconds>${turn.seconds}</b>秒</span><span class="turn-progress"><i></i></span></div><div class="hand-message ${mine?'mine':''}">${esc(hint)}</div><div class="hand-scroll"><div class="hand-rack" style="width:${layout.width}px;height:${layout.height}px;--card-w:${layout.cardWidth}px;--card-h:${layout.cardHeight}px">${hand.map((c,i)=>`<button class="hand-card ${playable.has(c.id)&&mine?'playable':'unplayable'} ${state.drawnCardId===c.id?'drawn':''}" style="--i:${i+1};left:${layout.placements[i].x}px;top:${layout.placements[i].y}px" data-action="play" data-card="${c.id}" data-deal-index="${i}" ${dealing?'data-dealt="false"':''} aria-label="${COLOR_NAMES[c.color]||''}${CARD_NAMES[c.value]||c.value} ${playable.has(c.id)&&mine?'出せます':'今は出せません'}" aria-disabled="${!playable.has(c.id)||!mine}" ${!mine||dealing?'disabled':''}>${cardHTML(c)}</button>`).join('')}</div></div><div class="hand-footer"><button class="sort-button" data-action="sort" aria-label="手札の色順並び替え" aria-pressed="${sortCards}">${icon('sort')}</button><span>${hand.length}枚${state.settings.zeroSeven?' · 0–7':state.settings.sevenSwap?' · 7枚交換':''}</span>${mine&&state.drawnCardId&&!state.settings.forcePlay?'<button class="pass-button" data-action="pass">パス</button>':''}</div></div>
   <div class="uno-controls"><button class="uno-button ${state.unoArmed||me?.uno?'armed':''} ${hand.length===2&&mine&&!state.unoArmed?'ready':''}" data-action="uno" ${!connected||state.phase!=='playing'||dealing||hand.length>2||hand.length===0||state.unoArmed||me?.uno||(hand.length===2&&!mine)?'disabled':''} aria-label="UNOを宣言" aria-pressed="${state.unoArmed||me?.uno||false}"><small>コール</small><strong>UNO!</strong></button><span>${state.unoArmed||me?.uno?'宣言済み！':'残り1枚の前に！'}</span></div>
   ${state.pendingUnoId&&state.pendingUnoId!==state.selfId?'<button class="catch-button" data-action="catch">UNO忘れ！<br><strong>指摘する +2</strong></button>':''}
-  ${reactionOpen?`<div class="reaction-tray">${['👋','😎','😂','😱','🔥','👏'].map(e=>`<button data-action="reaction" data-emoji="${e}" aria-label="${e}を送る">${e}</button>`).join('')}</div>`:''}
+  ${reactionOpen?`<div class="reaction-tray">${REACTIONS.map(([e,label])=>`<button data-action="reaction" data-emoji="${e}" aria-label="${label}">${label}</button>`).join('')}</div>`:''}
   <span class="latest-event">${esc(state.events.at(-1)?.text||'')}</span><button class="rotate-screen-button" data-action="fullscreen" aria-label="全画面表示">${icon('fullscreen')}<span>横向きでも遊べるよ</span></button>
-  ${dealing?'<div class="deal-overlay"><span>READY?</span><strong data-countdown>3</strong><small>カードを配っています</small></div>':''}
+  ${dealing?`<div class="deal-source">${Array.from({length:5},()=>cardHTML({back:true})).join('')}</div><span class="deal-label">カードを配っています</span>`:''}
   ${state.paused?'<div class="paused-cover"><strong>ちょっと、ひと休み。</strong><span>プレイヤーが戻ったら再開します</span></div>':''}</section>`;
 }
 
@@ -151,7 +158,7 @@ function render() {
   document.body.classList.toggle('in-friends',!!state||menu==='friends');
   renderHeader();
   app.innerHTML=state?(state.phase==='lobby'?waitingHTML():gameHTML()):menu==='friends'?friendsHTML():menu==='classic'?classicHTML():homeHTML();
-  updateConnection();updateClock();updateAudioStatus();
+  updateConnection();updateClock();updateAudioStatus();syncDeal();
 }
 
 function updateAudioStatus() {
@@ -159,7 +166,7 @@ function updateAudioStatus() {
   const label=$('[data-audio-home]');if(label)label.textContent=status.musicPlaying?'サウンド ON':'音ありで遊ぶ';
   const detail=$('[data-audio-status]');
   if(detail)detail.textContent=status.voiceError&&sound.settings.voices?status.voiceError:status.musicPlaying?(status.context==='running'?'BGM・効果音を再生できます':'BGM再生中 · 効果音はタップで再開'):status.error||(!status.activated?'「音を開始」をタップしてね':'音楽はOFFです。設定を確認してね');
-  const badge=$('[data-audio-engine]');if(badge)badge.textContent=`BGM: ${status.musicPlaying?'再生中':'停止中'} ／ 効果音: ${status.context==='running'?'準備OK':'タップで再開'} ／ ボイス: ${!sound.settings.voices?'OFF':status.voiceReady?'読込OK':'準備中'}`;
+  const badge=$('[data-audio-engine]');if(badge)badge.textContent=`BGM: ${status.musicPlaying?'再生中':'停止中'} ／ 効果音: ${status.context==='running'?'準備OK':'タップで再開'} ／ ボイス: ${!sound.settings.voices?'OFF':status.voiceReady?'日本語':'端末の日本語音声'}`;
   const button=$('#sound-button');if(button)button.classList.toggle('needs-tap',status.needsTap);
 }
 
@@ -167,8 +174,8 @@ function dialogHead(title,close=true) {
   return `<div class="dialog-head"><h2>${title}</h2>${close?'<button class="dialog-close" data-action="close" aria-label="閉じる">×</button>':''}</div>`;
 }
 function dialogHTML(type) {
-  if(type==='profile')return `${dialogHead('プレイヤー設定')}<label class="field-label" for="player-name">プレイヤー名</label><input class="text-input" id="player-name" autocomplete="nickname" maxlength="16" placeholder="名前を入力" value="${esc(profile.name)}"><div class="avatar-picker" role="group" aria-label="アバターを選択">${AVATARS.map((a,i)=>`<button class="avatar-option ${profile.avatar===i?'selected':''}" data-action="avatar" data-avatar="${i}" aria-label="アバター ${i+1}" aria-pressed="${profile.avatar===i}">${a}</button>`).join('')}</div><button class="game-button gold" data-action="save-profile">これで遊ぶ ${icon('check')}</button><p class="dialog-description">名前とアバターは、次に入るルームから反映されるよ。</p>`;
-  if(type==='audio')return `${dialogHead('サウンド設定')}<div class="audio-status"><span class="audio-status-dot"></span><span data-audio-status>音を開始してね</span></div><div class="audio-start-buttons"><button class="game-button gold compact" data-action="enable-audio">${icon('sound')}音を開始</button><button class="small-game-button" data-action="test-audio">♪ 音をテスト</button></div><div class="sound-row"><span>BGM<small>パーティーを盛り上げる音楽</small></span><button class="switch ${sound.settings.music?'on':''}" role="switch" aria-checked="${sound.settings.music}" data-action="music" aria-label="BGMを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.musicVolume}" data-volume="musicVolume" aria-label="BGM音量"><span data-volume-label="musicVolume">${sound.settings.musicVolume}%</span></div><div class="sound-row"><span>効果音<small>カード・ドロー・UNO・勝利</small></span><button class="switch ${sound.settings.effects?'on':''}" role="switch" aria-checked="${sound.settings.effects}" data-action="effects" aria-label="効果音を切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.effectsVolume}" data-volume="effectsVolume" aria-label="効果音の音量"><span data-volume-label="effectsVolume">${sound.settings.effectsVolume}%</span></div><div class="sound-row"><span>ボイス<small>レッド！ ブルー！ リバース！ UNO！</small></span><button class="switch ${sound.settings.voices?'on':''}" role="switch" aria-checked="${sound.settings.voices}" data-action="voices" aria-label="ボイスを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.voiceVolume}" data-volume="voiceVolume" aria-label="ボイス音量"><span data-volume-label="voiceVolume">${sound.settings.voiceVolume}%</span></div><button class="small-game-button voice-test-button" data-action="test-voice">▶ ボイスをテスト</button><div class="sound-row"><span>残り時間の警告<small>自分の残り10秒・5秒から／試合の残り30秒・10秒から</small></span><button class="switch ${sound.settings.alerts?'on':''}" role="switch" aria-checked="${sound.settings.alerts}" data-action="alerts" aria-label="警告音を切り替え"></button></div><p class="audio-engine-status" data-audio-engine></p><p class="audio-footnote">スマホで聞こえない時は「音を開始」をタップ。<br>iPhoneのBGM音量は、端末側の音量ボタンでも調節してね。</p>`;
+  if(type==='profile')return `${dialogHead('プレイヤー設定')}<div class="profile-preview">${avatar(profile)}</div><label class="field-label" for="player-name">プレイヤー名</label><input class="text-input" id="player-name" autocomplete="nickname" maxlength="16" value="${esc(profile.name)}"><label class="photo-picker" for="avatar-file">${icon('image')}写真・画像を選ぶ</label><input class="avatar-file" type="file" id="avatar-file" accept="image/*"><div class="avatar-picker" role="group" aria-label="アイコンを選択">${AVATARS.map((a,i)=>`<button class="avatar-option ${!profile.image&&profile.avatar===i?'selected':''}" data-action="avatar" data-avatar="${i}" aria-label="アイコン ${i+1}" aria-pressed="${!profile.image&&profile.avatar===i}"><img src="${a}" alt=""></button>`).join('')}</div><button class="game-button gold" data-action="save-profile">保存 ${icon('check')}</button>`;
+  if(type==='audio')return `${dialogHead('サウンド設定')}<div class="audio-status"><span class="audio-status-dot"></span><span data-audio-status>音を開始してね</span></div><div class="audio-start-buttons"><button class="game-button gold compact" data-action="enable-audio">${icon('sound')}音を開始</button><button class="small-game-button" data-action="test-audio">♪ 音をテスト</button></div><div class="sound-row"><span>BGM<small>パーティーを盛り上げる音楽</small></span><button class="switch ${sound.settings.music?'on':''}" role="switch" aria-checked="${sound.settings.music}" data-action="music" aria-label="BGMを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.musicVolume}" data-volume="musicVolume" aria-label="BGM音量"><span data-volume-label="musicVolume">${sound.settings.musicVolume}%</span></div><div class="sound-row"><span>効果音<small>カード・ドロー・UNO・勝利</small></span><button class="switch ${sound.settings.effects?'on':''}" role="switch" aria-checked="${sound.settings.effects}" data-action="effects" aria-label="効果音を切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.effectsVolume}" data-volume="effectsVolume" aria-label="効果音の音量"><span data-volume-label="effectsVolume">${sound.settings.effectsVolume}%</span></div><div class="sound-row"><span>ボイス<small>レッド！ ブルー！ リバース！ UNO！</small></span><button class="switch ${sound.settings.voices?'on':''}" role="switch" aria-checked="${sound.settings.voices}" data-action="voices" aria-label="ボイスを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.voiceVolume}" data-volume="voiceVolume" aria-label="ボイス音量"><span data-volume-label="voiceVolume">${sound.settings.voiceVolume}%</span></div><button class="small-game-button voice-test-button" data-action="test-voice">▶ ボイスをテスト</button><div class="sound-row"><span>残り時間の警告<small>自分の手番と試合終了の、最後の3秒だけ</small></span><button class="switch ${sound.settings.alerts?'on':''}" role="switch" aria-checked="${sound.settings.alerts}" data-action="alerts" aria-label="警告音を切り替え"></button></div><p class="audio-engine-status" data-audio-engine></p><p class="audio-footnote">スマホで聞こえない時は「音を開始」をタップ。<br>iPhoneのBGM音量は、端末側の音量ボタンでも調節してね。</p>`;
   if(type==='create-room'||type==='room-settings') {
     const editing=type==='room-settings',host=!editing||state.hostId===state.selfId;
     return `${dialogHead(editing?'ルーム設定':'部屋を作成')}<p class="setup-description">${editing?'このルームで遊ぶルール':'自分たちだけのルールで、カードパーティー。'}</p>${setupForm(draft,!host)}<button class="game-button ${host?'green':'blue'}" data-action="${host?editing?'save-room-settings':'create-configured':'close'}">${host?editing?'設定を保存':'作成する':'閉じる'} ${icon('check')}</button>`;
@@ -204,17 +211,13 @@ function updateClock() {
   if(panel){
     panel.classList.toggle('is-mine',status.mine);panel.classList.toggle('urgent',status.urgent);
     $('[data-turn-title]',panel).textContent=status.title;
-    $('.turn-panel-icon',panel).textContent=status.mine?'▶':'◷';
     $('[data-turn-seconds]',panel).textContent=status.seconds;
     $('[data-turn-remaining]',panel).hidden=!status.active;
     panel.style.setProperty('--turn-progress',status.progress);
   }
   $('.game-screen')?.classList.toggle('turn-urgent',status.urgent);
   $('.match-clock')?.classList.toggle('match-urgent',status.active&&status.roundSeconds!==null&&status.roundSeconds<=30);
-  for(const cue of status.cues){
-    if(cue.intro){sound.effect(cue.effect);sound.announce(cue.voice);showTurnIntro(status.key);}
-    else if(sound.settings.alerts){sound.effect(cue.effect);if(cue.voice)sound.announce(cue.voice);}
-  }
+  for(const cue of status.cues)if(sound.settings.alerts)sound.effect(cue.effect);
   const now=Math.max(Date.now()+serverOffset,state.dealUntil||0);
   const seconds=Math.max(0,Math.ceil(((state.turnEndsAt||now)-now)/1000));
   for(const el of document.querySelectorAll('[data-turn-counter]'))el.textContent=seconds;
@@ -224,11 +227,6 @@ function updateClock() {
   if(counter){const n=Math.ceil((state.dealUntil-Date.now()-serverOffset)/1000);counter.textContent=n>0?n:'GO!';}
 }
 setInterval(updateClock,200);
-function showTurnIntro(key){
-  const old=$('.turn-intro');if(old)old.remove();
-  const el=document.createElement('div');el.className='turn-intro';el.textContent='あなたの番！';fxRoot.append(el);
-  setTimeout(()=>el.remove(),1400);
-}
 
 const socket=window.io({autoConnect:false,reconnection:true,reconnectionDelay:600,reconnectionDelayMax:3000,timeout:10000});
 async function send(name,payload={}) {
@@ -287,14 +285,12 @@ socket.on('state',next=>{
   const fresh=events.filter(e=>Date.now()+serverOffset-e.at<4000);
   for(const name of eventVoices(fresh))sound.announce(name);
   render();
-  if(play&&from)animateCard(play.card,from);
+  if(play&&from)animateCard(play.card,from,play.color);
   for(const e of events)if(e.type==='draw')animateDraw(e.actorId,e.amount);
   if(play?.amount&&!next.drawStack)animateDraw(play.targetId,play.amount,180);
-  if(before?.dealUntil&&!next.dealUntil&&next.phase==='playing')for(const p of next.players)animateDraw(p.id,2);
   const latest=events.at(-1);
   if(latest) {
     if(latest.type==='win') { sound.effect('win');if(!reducedMotion)confetti(); }
-    else if(events.some(e=>e.type==='start'))sound.effect('start');
     else if(latest.type==='uno'||play?.uno) { sound.effect('uno');burst('UNO!'); }
     else if(play) { const value=play.card.value;sound.effect(value==='reverse'?'reverse':value==='skip'?'skip':value==='wild'||value==='wild4'?'wild':'play');if(['reverse','skip','draw2','wild4'].includes(value))burst(({reverse:'REVERSE!',skip:'SKIP!',draw2:'+2',wild4:'+4'})[value]); }
     else if(latest.type==='draw'||latest.type==='catch')sound.effect('draw');
@@ -305,18 +301,16 @@ socket.on('state',next=>{
 });
 socket.on('reaction',data=>{
   const el=data.playerId===state?.selfId?$('.self-player'):$(`[data-player-id="${data.playerId}"]`);
-  const rect=el?.getBoundingClientRect();const node=document.createElement('span');node.className='reaction-float';node.textContent=data.emoji;
+  const rect=el?.getBoundingClientRect();const node=document.createElement('span');node.className='reaction-float';node.textContent=REACTIONS.find(([e])=>e===data.emoji)?.[1]||'ナイス！';
   node.style.left=`${rect?rect.left+rect.width/2-20:innerWidth/2}px`;node.style.top=`${rect?rect.top:innerHeight/2}px`;fxRoot.append(node);setTimeout(()=>node.remove(),2300);
 });
 
-function burst(text) {
-  if(reducedMotion)return;
-  const n=document.createElement('span');n.className='action-burst';n.textContent=text;fxRoot.append(n);setTimeout(()=>n.remove(),1250);
-}
-function animateCard(card,from) {
+function burst(text) { toast(text); }
+
+function animateCard(card,from,color) {
   if(reducedMotion)return;
   const to=$('.discard-slot')?.getBoundingClientRect();if(!to)return;
-  const node=document.createElement('div');node.className='flying-card';node.innerHTML=cardHTML(card);
+  const node=document.createElement('div');node.className='flying-card';node.innerHTML=cardHTML(card,'',card.color==='wild'?color:null);
   node.style.transform=`translate(${from.left}px,${from.top}px) rotate(-14deg) scale(.8)`;fxRoot.append(node);
   requestAnimationFrame(()=>requestAnimationFrame(()=>{node.style.transform=`translate(${to.left}px,${to.top}px) rotate(8deg) scale(1)`;}));setTimeout(()=>node.remove(),420);
 }
@@ -348,11 +342,11 @@ async function copyText(value,message) {
   }catch{toast(`コピーできませんでした：${value}`);}
 }
 async function create(quick=false) {
-  const result=await send('room:create',{name:profile.name,avatar:profile.avatar,quick,settings:draft});saveSession(result);sound.effect('start');
+  const result=await send('room:create',{name:profile.name,avatar:profile.avatar,image:profile.image||null,quick,settings:draft});saveSession(result);sound.effect('start');
 }
 async function join() {
   if(joinValue.length!==6)throw new Error('6文字のルームコードを入力してね');
-  saveSession(await send('room:join',{name:profile.name,avatar:profile.avatar,code:joinValue}));sound.effect('start');
+  saveSession(await send('room:join',{name:profile.name,avatar:profile.avatar,image:profile.image||null,code:joinValue}));sound.effect('start');
 }
 async function play(cardId,color,targetId) {
   if(!state||state.phase!=='playing')return;
@@ -381,6 +375,7 @@ document.addEventListener('input',e=>{
   if(e.target.dataset.volume){const key=e.target.dataset.volume;sound.set(key,Number(e.target.value));const label=$(`[data-volume-label="${key}"]`);if(label)label.textContent=e.target.value+'%';}
 });
 document.addEventListener('change',e=>{
+  if(e.target.id==='avatar-file'){uploadAvatar(e.target.files?.[0]);return;}
   if(e.target.dataset.setting){draft[e.target.dataset.setting]=e.target.dataset.setting==='botDifficulty'?e.target.value:Number(e.target.value);if(draft.mode==='teams')draft.maxPlayers=4;const badge=$('.ready-badge');if(badge)badge.textContent=`${draft.maxPlayers-1}人のCPU · ${DIFFICULTIES[draft.botDifficulty]||'普通'}`;}
 });
 document.addEventListener('submit',e=>{if(e.target.dataset.form==='join'){e.preventDefault();perform(join);}});
@@ -394,8 +389,8 @@ document.addEventListener('click',e=>{
   if(action==='table-settings'){openDialog('game-settings');return;}
   if(action==='result'){if(state?.phase==='finished')openDialog('result');return;}
   if(action==='close'){closeDialog();return;}
-  if(action==='save-profile'){profile.name=profile.name.trim()||'ゲスト';write('uno-profile',profile);closeDialog();render();return;}
-  if(action==='avatar'){profile.avatar=Number(button.dataset.avatar);write('uno-profile',profile);if(dialogType==='profile')openDialog('profile');else render();return;}
+  if(action==='save-profile'){perform(async()=>{profile.name=profile.name.trim()||'ゲスト';if(state)await send('player:profile',profile);write('uno-profile',profile);closeDialog();render();});return;}
+  if(action==='avatar'){profile.image=null;profile.avatar=Number(button.dataset.avatar);write('uno-profile',profile);if(dialogType==='profile')openDialog('profile');else render();return;}
   if(action==='room-create-settings'){openDialog('create-room');return;}
   if(action==='room-settings'){draft={...state.settings};openDialog('room-settings');return;}
   if(action==='draft-choice'){
@@ -415,12 +410,12 @@ document.addEventListener('click',e=>{
     sound.set('music',true);sound.set('effects',true);sound.set('voices',true);
     if(sound.settings.musicVolume===0)sound.set('musicVolume',34);
     if(sound.settings.effectsVolume===0)sound.set('effectsVolume',65);
-    sound.unlock({gesture:true});sound.effect('start');updateAudioStatus();
+    sound.unlock({gesture:true});updateAudioStatus();
     if(dialogType==='audio')openDialog('audio');toast('音声を開始します。端末の音量も上げてね');return;
   }
   if(action==='test-voice'){
     sound.unlock({gesture:true});sound.set('voices',true);if(!sound.settings.voiceVolume)sound.set('voiceVolume',85);
-    sound.announce('red');sound.announce('blue');sound.announce('reverse');sound.announce('uno');toast('合成ボイスをテストします');return;
+    sound.cancelVoices();sound.announce('red');sound.announce('blue');sound.announce('uno');toast('日本語のボイスをテストします');return;
   }
   if(action==='test-audio'){sound.test().then(ok=>toast(ok?'テスト音を再生しました':'再生できませんでした。Safariで開き直して試してね',!ok));return;}
   if(action==='leave'){openDialog('leave');return;}
@@ -458,5 +453,76 @@ document.addEventListener('click',e=>{
     else if(action==='confirm-leave'){await send('room:leave');forgetSession();state=null;reactionOpen=false;closeDialog();menu='home';updateRoomURL(null);render();}
   });
 });
+
+async function uploadAvatar(file){
+  if(!file)return;
+  try{
+    if(!file.type.startsWith('image/')||file.type==='image/svg+xml')throw Error('写真かPNG・JPEGなどの画像を選んでね');
+    if(file.size>12*1024*1024)throw Error('12MB以内の画像を選んでね');
+    const url=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});
+    const img=new Image();await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('画像を開けませんでした。別の画像を選んでね'));img.src=url;});
+    const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;const ctx=canvas.getContext('2d');
+    const side=Math.min(img.naturalWidth,img.naturalHeight);ctx.fillStyle='#e8f3fa';ctx.fillRect(0,0,128,128);
+    ctx.drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,0,0,128,128);
+    let image=canvas.toDataURL('image/jpeg',.72);if(image.length>24000)image=canvas.toDataURL('image/jpeg',.45);
+    if(image.length>24000)throw Error('画像を小さくして、もう一度選んでね');
+    profile.image=image;write('uno-profile',profile);if(dialogType==='profile')openDialog('profile');
+  }catch(e){toast(e.message||'画像を読み込めませんでした',true);}
+}
+
+let dealRun=null;
+function stopDeal(){if(dealRun){for(const timer of dealRun.timers)clearTimeout(timer);dealRun=null;}document.querySelectorAll('.deal-flight').forEach(n=>n.remove());}
+function applyDealVisibility(){
+  if(!dealRun||!state)return;
+  const elapsed=Date.now()+serverOffset-dealRun.start;
+  for(const step of dealRun.sequence){
+    const root=step.self?$('.hand-rack'):$(`[data-player-id="${step.playerId}"] .mini-hand`);
+    const el=root?.querySelector(`[data-deal-index="${step.cardIndex}"]`);
+    if(el)el.dataset.dealt=String(elapsed>=step.at+330||reducedMotion);
+  }
+  const source=$('.deal-source');if(source)source.style.opacity=elapsed>=3200?'0':'1';
+  if(elapsed>=3350){$('.draw-deck')?.classList.add('deal-revealed');$('.center-play-area')?.classList.add('deal-revealed');}
+}
+function syncDeal(){
+  if(!state||state.phase!=='playing'||!state.dealUntil||state.dealUntil<=Date.now()+serverOffset){stopDeal();return;}
+  const key=`${state.code}:${state.round}`;
+  if(dealRun?.key===key){applyDealVisibility();return;}
+  stopDeal();
+  const run={key,start:state.dealStartedAt||state.dealUntil-3600,sequence:dealSequence(state.players,state.selfId),timers:[]};dealRun=run;
+  const elapsed=Date.now()+serverOffset-run.start;
+  for(const step of run.sequence){
+    const delay=step.at-elapsed;if(delay<0)continue;
+    run.timers.push(setTimeout(()=>{
+      if(dealRun!==run||document.hidden||Date.now()+serverOffset-run.start-step.at>220)return;
+      flyDeal(step,run);sound.effect('deal');
+    },delay));
+  }
+  run.timers.push(setTimeout(()=>{
+    if(dealRun!==run)return;
+    const from=$('.deal-source')?.getBoundingClientRect(),to=$('.draw-deck')?.getBoundingClientRect();
+    if(from&&to&&!reducedMotion){const n=document.createElement('div');n.className='deal-flight';n.innerHTML=cardHTML({back:true});fxRoot.append(n);
+      n.animate([{transform:`translate(${from.x}px,${from.y}px) rotate(-6deg)`},{transform:`translate(${to.x}px,${to.y}px) rotate(-12deg) scale(.8)`}],{duration:300,fill:'forwards'});
+      run.timers.push(setTimeout(()=>n.remove(),310));}
+    const source=$('.deal-source');if(source)source.style.opacity='0';
+  },Math.max(0,3000-elapsed)));
+  run.timers.push(setTimeout(()=>{if(dealRun===run){$('.draw-deck')?.classList.add('deal-revealed');$('.center-play-area')?.classList.add('deal-revealed');applyDealVisibility();}},Math.max(0,3350-elapsed)));
+  applyDealVisibility();
+}
+function flyDeal(step,run){
+  const start=$('.deal-source')?.getBoundingClientRect();
+  const root=step.self?$('.hand-rack'):$(`[data-player-id="${step.playerId}"] .mini-hand`);
+  const target=root?.querySelector(`[data-deal-index="${step.cardIndex}"]`),end=target?.getBoundingClientRect();
+  if(!start||!end)return;
+  if(reducedMotion){target.dataset.dealt='true';return;}
+  const n=document.createElement('div');n.className='deal-flight';n.innerHTML=cardHTML({back:true});fxRoot.append(n);
+  const x=start.x+start.width/2-26,y=start.y+start.height/2-39,scale=Math.min(1.8,end.width/52);
+  n.animate([{transform:`translate(${x}px,${y}px) rotate(-15deg) scale(.9)`},
+    {transform:`translate(${(x+end.x)/2}px,${Math.min(y,end.y)-45}px) rotate(12deg) rotateY(${step.self?80:0}deg)`},
+    {transform:`translate(${end.x}px,${end.y}px) rotate(0deg) scale(${scale})`}],{duration:350,easing:'cubic-bezier(.2,.6,.3,1)',fill:'forwards'});
+  if(step.self)run.timers.push(setTimeout(()=>{if(dealRun===run)n.innerHTML=cardHTML(state.hand[step.cardIndex]);},175));
+  run.timers.push(setTimeout(()=>{if(target.isConnected)target.dataset.dealt='true';n.remove();},350));
+}
+let resizeTimer;
+window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(state)render();},100);});
 
 render();socket.connect();

@@ -41,8 +41,8 @@ export function shuffle(cards) {
   return cards;
 }
 
-export function createPlayer(name, avatar = 0, bot = false) {
-  return { id: randomUUID(), token: randomUUID() + randomUUID(), name, avatar, bot,
+export function createPlayer(name, avatar = 0, bot = false, image = null) {
+  return { id: randomUUID(), token: randomUUID() + randomUUID(), name, avatar, image, bot,
     connected: !bot, lastSeen: Date.now(), hand: [], uno: false, unoArmed: false, score: 0 };
 }
 
@@ -103,9 +103,11 @@ export function startGame(room, dealDelay = 0) {
   if (room.settings.mode === 'teams' && room.players.length !== 4) throw new Error('2vs2は4人でスタートします。空席にCPUを追加してね');
   room.deck = deck(); room.discard = [];
   for (const player of room.players) {
-    player.hand = take(room, room.settings.startingCards);
-    player.uno = false; player.unoArmed = false;
+    player.hand = []; player.uno = false; player.unoArmed = false;
   }
+  // Deal one card per seat per round, from the same unbiased shuffled deck.
+  for(let round=0;round<room.settings.startingCards;round++)
+    for(const player of room.players)player.hand.push(...take(room,1));
   // A number card opens each round, so there is no ambiguous opening action.
   const topIndex = room.deck.findIndex(c => /^\d$/.test(c.value));
   const [top] = room.deck.splice(topIndex, 1);
@@ -114,7 +116,7 @@ export function startGame(room, dealDelay = 0) {
   room.currentIndex = room.round % room.players.length;
   room.round++; room.turnNumber = 1; room.drawnCardId = null; room.drawStack = 0; room.drawType = null;
   room.pendingUno = null; room.winnerId = null; room.winnerTeam = null; room.draw = false; room.rankings = []; room.paused = false;
-  room.pauseStartedAt = null; room.dealUntil = dealDelay ? Date.now() + dealDelay : 0;
+  room.pauseStartedAt = null; room.dealStartedAt = Date.now(); room.dealUntil = dealDelay ? Date.now() + dealDelay : 0;
   const startsAt = Date.now() + dealDelay;
   room.turnEndsAt = startsAt + room.settings.turnSeconds * 1000;
   room.roundEndsAt = room.settings.roundMinutes ? startsAt + room.settings.roundMinutes * 60000 : null;
@@ -152,7 +154,7 @@ function finish(room, winner, timed = false, tied = false) {
   const points = tied ? 0 : room.players.filter(p => !winning(p))
     .reduce((sum, p) => sum + p.hand.reduce((s, c) => s + cardPoints(c), 0), 0);
   for (const player of room.players) if (winning(player)) player.score += points;
-  room.rankings = room.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar,
+  room.rankings = room.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar, image: p.image || null,
     cards: p.hand.length, points: p.hand.reduce((s,c) => s + cardPoints(c), 0), score: p.score,
     won: winning(p), team: room.settings.mode === 'teams' ? room.players.indexOf(p) % 2 : null }))
     .sort((a,b) => Number(b.won) - Number(a.won) || a.points - b.points);
@@ -344,7 +346,7 @@ export function publicState(room, playerId) {
   const self = room.players.find(p => p.id === playerId);
   return { code: room.code, hostId: room.hostId, phase: room.phase, round: room.round,
     revision: room.revision, turnNumber: room.turnNumber || 0, settings: room.settings, selfId: playerId,
-    players: room.players.map((p,i) => ({ id: p.id, name: p.name, avatar: p.avatar, bot: p.bot,
+    players: room.players.map((p,i) => ({ id: p.id, name: p.name, avatar: p.avatar, image: p.image || null, bot: p.bot,
       connected: p.connected, count: p.hand.length, uno: p.uno, score: p.score, team: room.settings.mode === 'teams' ? i % 2 : null })),
     hand: self?.hand || [], playableIds: self?.hand.filter(c => canPlay(room, self, c)).map(c => c.id) || [],
     top: room.discard.at(-1) || null, color: room.color, direction: room.direction,
@@ -353,5 +355,5 @@ export function publicState(room, playerId) {
     unoArmed: self?.unoArmed || false, winnerId: room.winnerId, winnerTeam: room.winnerTeam ?? null, draw: room.draw || false,
     rankings: room.rankings.map(p => ({ ...p, won: p.won ?? p.id === room.winnerId })),
     events: room.events, turnEndsAt: room.turnEndsAt, roundEndsAt: room.roundEndsAt,
-    dealUntil: room.dealUntil, serverNow: Date.now(), paused: room.paused };
+    dealUntil: room.dealUntil, dealStartedAt: room.dealStartedAt || 0, serverNow: Date.now(), paused: room.paused };
 }
