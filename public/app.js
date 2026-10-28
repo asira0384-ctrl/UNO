@@ -1,12 +1,17 @@
-import { PartyAudio } from './audio.js?v=1.3';
-import { TurnFeedback, turnStatus, eventVoices } from './feedback.js?v=1.3';
-import { fitHand, dealSequence } from './layout.js?v=1.3';
-import { cardMarkup as cardHTML } from './cards.js?v=1.3';
+import { PartyAudio } from './audio.js?v=1.4';
+import { TurnFeedback, turnStatus, eventVoices } from './feedback.js?v=1.4';
+import { fitHand, dealSequence } from './layout.js?v=1.4';
+import { cardMarkup as cardHTML } from './cards.js?v=1.4';
+import { CardInput,insideDropZone } from './interaction.js?v=1.4';
+import { THEMES,themeIndex } from './themes.js?v=1.4';
 
 const $ = (query,root=document) => root.querySelector(query);
 const app=$('#app'), modalRoot=$('#modal-root'), fxRoot=$('#fx-root');
 const sound=new PartyAudio();
 const feedback=new TurnFeedback();
+const cardInput=new CardInput();
+const ambienceStarted=Date.now();
+let ambience=-1,ignoreCardClickUntil=0,dragView=null,activePointer=null,finishUntil=0,finishKey=null,resultTimer=null;
 const DIFFICULTIES={easy:'かんたん',normal:'普通',hard:'強い'};
 const AVATARS=Array.from({length:8},(_,i)=>`/assets/avatars/robot-${i+1}.svg`);
 const REACTIONS=[['👋','よろしく！'],['😎','ナイス！'],['😂','いいね！'],['😱','びっくり！'],['🔥','勝負！'],['👏','お見事！']];
@@ -52,6 +57,7 @@ const paths={
   fullscreen:'M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6',
   link:'m10 13 4-4m-6 7-1 1a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m0 2 1-1a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0',
   check:'m5 12 4 4L19 6',
+  down:'M12 3v16m-7-7 7 7 7-7',
   trophy:'M8 3h8v7a4 4 0 0 1-8 0V3Zm0 2H4v3c0 3 2 4 4 4m8-7h4v3c0 3-2 4-4 4m-4 2v5m-4 2h8',
   book:'M12 5v15M3 4c4-1 6-1 9 1 3-2 5-2 9-1v15c-4-1-6-1-9 1-3-2-5-2-9-1V4Z',
   settings:'m10 2 4 0 .7 3 2 .9 2.7-1 2 3.4-2 2.2.1 2.3 2.1 2-2 3.5-2.8-.8-2 1-.6 3h-4l-.7-3-2-1-2.7.8-2-3.4 2-2.1-.1-2.3-2.1-2.2 2-3.4 2.8 1 2-1L10 2Zm6 10a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
@@ -61,7 +67,7 @@ const paths={
 function icon(name,cls='') { return `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]||paths.sparkle}"/></svg>`; }
 function avatar(player,cls='') {
   const a=Number.isInteger(player?.avatar)?player.avatar:0;
-  const image=typeof player?.image==='string'&&/^data:image\/(png|jpeg|webp);base64,/.test(player.image)&&player.image.length<=24000?player.image:AVATARS[a]||AVATARS[0];
+  const image=typeof player?.image==='string'&&/^data:image\/(png|jpeg|webp);base64,/.test(player.image)&&player.image.length<=96000?player.image:AVATARS[a]||AVATARS[0];
   return `<span class="avatar ${cls}" aria-hidden="true"><img src="${esc(image)}" alt="" draggable="false"></span>`;
 }
 function toast(message,error=false) {
@@ -93,7 +99,7 @@ function friendsHTML() {
 }
 
 function ruleGrid(settings,disabled=false) {
-  const rules=[['sevenSwap','7枚交換','7を出して相手と手札を交換','7 ⇄'],['zeroSeven','0–7ルール','0で全員移動・7で手札交換','0 ⇄ 7'],['stackDraw','スタッキング','同じ+2同士・+4同士を重ねる','+2 +4'],['forcePlay','強制プレイ','引いたカードが出せたら必ず出す','▶']];
+  const rules=[['sevenSwap','7枚交換','7を出して相手と手札を交換','7 ⇄'],['zeroSeven','0–7ルール','0で全員移動・7で手札交換','0 ⇄ 7'],['stackDraw','スタッキング','同じ+2同士・+4同士を重ねる','+2 +4'],['forcePlay','強制プレイ','引いたカードが出せたら必ず出す',icon('arrow')]];
   return `<div class="rule-tiles">${rules.map(([key,label,description,symbol])=>`<button class="rule-tile ${settings[key]?'selected':''}" data-action="toggle-rule" data-rule="${key}" role="switch" aria-checked="${!!settings[key]}" aria-label="${label}" title="${description}" ${disabled?'disabled':''}><span class="rule-art rule-${key}">${symbol}</span><strong>${label}</strong><small>${description}</small><span class="rule-check">${settings[key]?'✓':'+'}</span></button>`).join('')}</div>`;
 }
 
@@ -137,13 +143,13 @@ function gameHTML() {
   const myIndex=state.players.findIndex(p=>p.id===state.selfId);
   const others=state.players.map((p,i)=>({p,relative:(i-myIndex+state.players.length)%state.players.length})).filter(x=>x.p.id!==state.selfId).sort((a,b)=>a.relative-b.relative);
   const positions=others.length===1?['top']:others.length===2?['top-left','top-right']:['left','top','right'];
-  const hint=dealing?'カードを配っています…':state.phase==='finished'?'ナイスゲーム！':!connected?'再接続しています…':state.paused?'対戦相手を待っています…':mine?(state.drawStack?`+${state.drawStack}！ 引くか、同じドローを重ねよう`:state.drawnCardId?(state.settings.forcePlay?'引いたカードを出してね':'引いたカードを出す？ パスもできるよ'):playable.size?'光るカードをタップして出そう':'山札をタップして1枚引こう'):`${current?.name||''} の番`;
+  const hint=dealing?'カードを配っています…':state.phase==='finished'?'ナイスゲーム！':!connected?'再接続しています…':state.paused?'対戦相手を待っています…':mine?(state.drawStack?`+${state.drawStack}！ 引くか、同じドローを重ねよう`:state.drawnCardId?(state.settings.forcePlay?'引いたカードを出してね':'引いたカードを出す？ パスもできるよ'):state.mustCallUno?'先にUNOボタンを押してね':playable.size?'選択 → 中央へドラッグ / ダブルタップ':'山札をタップして1枚引こう'):`${current?.name||''} の番`;
   return `<section style="--hand-height:${layout.height}px" class="game-screen players-${state.players.length} ${dealing?'dealing':''} ${hand.length>20?'hand-crowded':''} ${mine?'my-turn':''}"><div class="table-scene"></div><div class="game-topbar"><button class="table-back" data-action="leave" aria-label="ルームを退出">${icon('back')}</button><span class="match-clock" aria-label="試合の残り時間">${icon('clock')}<small>試合</small><b data-match-clock>--:--</b></span><span class="round-chip">ROUND ${state.round}${state.settings.mode==='teams'?' · 2 vs 2':''}</span><div class="game-tools"><button class="table-icon" data-action="log" aria-label="ゲームの履歴">${icon('log')}</button><button class="table-icon" data-action="audio" aria-label="サウンド設定">${icon('sound')}</button><button class="table-icon" data-action="table-settings" aria-label="ゲーム設定">${icon('settings')}</button></div></div>
   ${others.map((x,i)=>opponentHTML(x.p,positions[i])).join('')}
-  <button class="draw-deck" data-action="draw" ${!mine||!!state.drawnCardId||!connected||dealing?'disabled':''} aria-label="${state.drawStack?`${state.drawStack}枚引く`:'山札から1枚引く'}">${cardHTML({back:true})}${mine&&!state.drawnCardId&&!dealing?'<span class="deck-arrow">⬇</span>':''}<span class="deck-caption">${state.drawStack?`+${state.drawStack}`:'DRAW'}</span></button>
+  <button class="draw-deck" data-action="draw" ${!mine||!!state.drawnCardId||!connected||dealing?'disabled':''} aria-label="${state.drawStack?`${state.drawStack}枚引く`:'山札から1枚引く'}">${cardHTML({back:true})}${mine&&!state.drawnCardId&&!dealing?`<span class="deck-arrow">${icon('down')}</span>`:''}<span class="deck-caption">${state.drawStack?`+${state.drawStack}`:'DRAW'}</span></button>
   <div class="center-play-area" style="--table-color:${SWATCHES[state.color]}"><div class="direction-orbit ${state.direction===-1?'reverse':''}" aria-label="${state.direction===1?'時計回り':'反時計回り'}"><svg viewBox="0 0 280 280" fill="none"><g stroke="currentColor" stroke-width="9" stroke-linecap="round"><path d="M47 112a98 98 0 0 1 169-37"/><path d="m196 43 24 34-38 5" stroke-linejoin="round"/><path d="M233 168A98 98 0 0 1 64 205"/><path d="m84 237-24-34 38-5" stroke-linejoin="round"/></g></svg></div><div class="discard-slot" aria-label="場のカード ${COLOR_NAMES[state.color]} ${esc(CARD_NAMES[state.top?.value]||state.top?.value)}">${cardHTML(state.top,'',state.top?.color==='wild'?state.color:null)}</div><span class="current-color" style="--swatch:${SWATCHES[state.color]}">${SHAPES[state.color]} ${COLOR_NAMES[state.color]}</span>${state.drawStack?`<span class="stack-warning">+${state.drawStack} STACK!</span>`:''}</div>
   <div class="self-player ${mine?'active':''}" data-self-player><button class="avatar-wrap" data-action="profile" aria-label="アイコンを変更">${avatar(me)}${mine?'<span class="turn-counter" data-turn-counter></span>':''}</button><strong class="player-name">${esc(me?.name)}</strong><span class="player-status">${me?.team!==null?`TEAM ${me.team+1}`:'YOU'} · ${hand.length}枚</span><button class="reaction-button" data-action="emojis" aria-label="リアクション">${icon('chat')}</button>${me?.uno?'<span class="uno-bubble">UNO!</span>':''}</div>
-  <div class="my-zone"><div class="turn-panel ${mine?'is-mine':''}" data-turn-panel><strong data-turn-title role="status" aria-live="polite">${esc(turn.title)}</strong><span data-turn-remaining><b data-turn-seconds>${turn.seconds}</b>秒</span><span class="turn-progress"><i></i></span></div><div class="hand-message ${mine?'mine':''}">${esc(hint)}</div><div class="hand-scroll"><div class="hand-rack" style="width:${layout.width}px;height:${layout.height}px;--card-w:${layout.cardWidth}px;--card-h:${layout.cardHeight}px">${hand.map((c,i)=>`<button class="hand-card ${playable.has(c.id)&&mine?'playable':'unplayable'} ${state.drawnCardId===c.id?'drawn':''}" style="--i:${i+1};left:${layout.placements[i].x}px;top:${layout.placements[i].y}px" data-action="play" data-card="${c.id}" data-deal-index="${i}" ${dealing?'data-dealt="false"':''} aria-label="${COLOR_NAMES[c.color]||''}${CARD_NAMES[c.value]||c.value} ${playable.has(c.id)&&mine?'出せます':'今は出せません'}" aria-disabled="${!playable.has(c.id)||!mine}" ${!mine||dealing?'disabled':''}>${cardHTML(c)}</button>`).join('')}</div></div><div class="hand-footer"><button class="sort-button" data-action="sort" aria-label="手札の色順並び替え" aria-pressed="${sortCards}">${icon('sort')}</button><span>${hand.length}枚${state.settings.zeroSeven?' · 0–7':state.settings.sevenSwap?' · 7枚交換':''}</span>${mine&&state.drawnCardId&&!state.settings.forcePlay?'<button class="pass-button" data-action="pass">パス</button>':''}</div></div>
+  <div class="my-zone"><div class="turn-panel ${mine?'is-mine':''}" data-turn-panel><strong data-turn-title role="status" aria-live="polite">${esc(turn.title)}</strong><span data-turn-remaining><b data-turn-seconds>${turn.seconds}</b>秒</span><span class="turn-progress"><i></i></span></div><div class="hand-message ${mine?'mine':''}">${esc(hint)}</div><div class="hand-scroll"><div class="hand-rack" style="width:${layout.width}px;height:${layout.height}px;--card-w:${layout.cardWidth}px;--card-h:${layout.cardHeight}px">${hand.map((c,i)=>`<button class="hand-card ${playable.has(c.id)&&mine?'playable':'unplayable'} ${state.drawnCardId===c.id?'drawn':''} ${cardInput.selected===c.id?'is-selected':''}" aria-pressed="${cardInput.selected===c.id}" style="--i:${i+1};left:${layout.placements[i].x}px;top:${layout.placements[i].y}px;--fan:${layout.placements[i].angle}deg" data-action="play" data-card="${c.id}" data-deal-index="${i}" ${dealing?'data-dealt="false"':''} aria-label="${COLOR_NAMES[c.color]||''}${CARD_NAMES[c.value]||c.value} ${playable.has(c.id)&&mine?'出せます':'今は出せません'}" aria-disabled="${!playable.has(c.id)||!mine}" ${!mine||dealing?'disabled':''}>${cardHTML(c)}</button>`).join('')}</div></div><div class="hand-footer"><button class="sort-button" data-action="sort" aria-label="手札の色順並び替え" aria-pressed="${sortCards}">${icon('sort')}</button><span>${hand.length}枚${state.settings.zeroSeven?' · 0–7':state.settings.sevenSwap?' · 7枚交換':''}</span>${mine&&state.drawnCardId&&!state.settings.forcePlay?'<button class="pass-button" data-action="pass">パス</button>':''}</div></div>
   <div class="uno-controls"><button class="uno-button ${state.unoArmed||me?.uno?'armed':''} ${hand.length===2&&mine&&!state.unoArmed?'ready':''}" data-action="uno" ${!connected||state.phase!=='playing'||dealing||hand.length>2||hand.length===0||state.unoArmed||me?.uno||(hand.length===2&&!mine)?'disabled':''} aria-label="UNOを宣言" aria-pressed="${state.unoArmed||me?.uno||false}"><small>コール</small><strong>UNO!</strong></button><span>${state.unoArmed||me?.uno?'宣言済み！':'残り1枚の前に！'}</span></div>
   ${state.pendingUnoId&&state.pendingUnoId!==state.selfId?'<button class="catch-button" data-action="catch">UNO忘れ！<br><strong>指摘する +2</strong></button>':''}
   ${reactionOpen?`<div class="reaction-tray">${REACTIONS.map(([e,label])=>`<button data-action="reaction" data-emoji="${e}" aria-label="${label}">${label}</button>`).join('')}</div>`:''}
@@ -156,6 +162,9 @@ function render() {
   const game=!!state&&state.phase!=='lobby';
   document.body.classList.toggle('in-game',game);
   document.body.classList.toggle('in-friends',!!state||menu==='friends');
+  if(cardInput.selected&&!state?.hand?.some(c=>c.id===cardInput.selected))cardInput.selected=null;
+  if(cardInput.pointer){cardInput.cancel();activePointer=null;}
+  clearCardDrag();
   renderHeader();
   app.innerHTML=state?(state.phase==='lobby'?waitingHTML():gameHTML()):menu==='friends'?friendsHTML():menu==='classic'?classicHTML():homeHTML();
   updateConnection();updateClock();updateAudioStatus();syncDeal();
@@ -166,7 +175,7 @@ function updateAudioStatus() {
   const label=$('[data-audio-home]');if(label)label.textContent=status.musicPlaying?'サウンド ON':'音ありで遊ぶ';
   const detail=$('[data-audio-status]');
   if(detail)detail.textContent=status.voiceError&&sound.settings.voices?status.voiceError:status.musicPlaying?(status.context==='running'?'BGM・効果音を再生できます':'BGM再生中 · 効果音はタップで再開'):status.error||(!status.activated?'「音を開始」をタップしてね':'音楽はOFFです。設定を確認してね');
-  const badge=$('[data-audio-engine]');if(badge)badge.textContent=`BGM: ${status.musicPlaying?'再生中':'停止中'} ／ 効果音: ${status.context==='running'?'準備OK':'タップで再開'} ／ ボイス: ${!sound.settings.voices?'OFF':status.voiceReady?'日本語':'端末の日本語音声'}`;
+  const badge=$('[data-audio-engine]');if(badge)badge.textContent=`BGM: ${status.musicPlaying?'再生中':'停止中'} ／ 効果音: ${status.context==='running'?'準備OK':'タップで再開'} ／ ボイス: ${!sound.settings.voices?'OFF':status.voiceReady?'ゲームボイス':'読込中'}`;
   const button=$('#sound-button');if(button)button.classList.toggle('needs-tap',status.needsTap);
 }
 
@@ -175,14 +184,14 @@ function dialogHead(title,close=true) {
 }
 function dialogHTML(type) {
   if(type==='profile')return `${dialogHead('プレイヤー設定')}<div class="profile-preview">${avatar(profile)}</div><label class="field-label" for="player-name">プレイヤー名</label><input class="text-input" id="player-name" autocomplete="nickname" maxlength="16" value="${esc(profile.name)}"><label class="photo-picker" for="avatar-file">${icon('image')}写真・画像を選ぶ</label><input class="avatar-file" type="file" id="avatar-file" accept="image/*"><div class="avatar-picker" role="group" aria-label="アイコンを選択">${AVATARS.map((a,i)=>`<button class="avatar-option ${!profile.image&&profile.avatar===i?'selected':''}" data-action="avatar" data-avatar="${i}" aria-label="アイコン ${i+1}" aria-pressed="${!profile.image&&profile.avatar===i}"><img src="${a}" alt=""></button>`).join('')}</div><button class="game-button gold" data-action="save-profile">保存 ${icon('check')}</button>`;
-  if(type==='audio')return `${dialogHead('サウンド設定')}<div class="audio-status"><span class="audio-status-dot"></span><span data-audio-status>音を開始してね</span></div><div class="audio-start-buttons"><button class="game-button gold compact" data-action="enable-audio">${icon('sound')}音を開始</button><button class="small-game-button" data-action="test-audio">♪ 音をテスト</button></div><div class="sound-row"><span>BGM<small>パーティーを盛り上げる音楽</small></span><button class="switch ${sound.settings.music?'on':''}" role="switch" aria-checked="${sound.settings.music}" data-action="music" aria-label="BGMを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.musicVolume}" data-volume="musicVolume" aria-label="BGM音量"><span data-volume-label="musicVolume">${sound.settings.musicVolume}%</span></div><div class="sound-row"><span>効果音<small>カード・ドロー・UNO・勝利</small></span><button class="switch ${sound.settings.effects?'on':''}" role="switch" aria-checked="${sound.settings.effects}" data-action="effects" aria-label="効果音を切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.effectsVolume}" data-volume="effectsVolume" aria-label="効果音の音量"><span data-volume-label="effectsVolume">${sound.settings.effectsVolume}%</span></div><div class="sound-row"><span>ボイス<small>レッド！ ブルー！ リバース！ UNO！</small></span><button class="switch ${sound.settings.voices?'on':''}" role="switch" aria-checked="${sound.settings.voices}" data-action="voices" aria-label="ボイスを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.voiceVolume}" data-volume="voiceVolume" aria-label="ボイス音量"><span data-volume-label="voiceVolume">${sound.settings.voiceVolume}%</span></div><button class="small-game-button voice-test-button" data-action="test-voice">▶ ボイスをテスト</button><div class="sound-row"><span>残り時間の警告<small>自分の手番と試合終了の、最後の3秒だけ</small></span><button class="switch ${sound.settings.alerts?'on':''}" role="switch" aria-checked="${sound.settings.alerts}" data-action="alerts" aria-label="警告音を切り替え"></button></div><p class="audio-engine-status" data-audio-engine></p><p class="audio-footnote">スマホで聞こえない時は「音を開始」をタップ。<br>iPhoneのBGM音量は、端末側の音量ボタンでも調節してね。</p>`;
+  if(type==='audio')return `${dialogHead('サウンド設定')}<div class="audio-status"><span class="audio-status-dot"></span><span data-audio-status>音を開始してね</span></div><div class="audio-start-buttons"><button class="game-button gold compact" data-action="enable-audio">${icon('sound')}音を開始</button><button class="small-game-button" data-action="test-audio">♪ 音をテスト</button></div><div class="sound-row"><span>BGM<small>パーティーを盛り上げる音楽</small></span><button class="switch ${sound.settings.music?'on':''}" role="switch" aria-checked="${sound.settings.music}" data-action="music" aria-label="BGMを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.musicVolume}" data-volume="musicVolume" aria-label="BGM音量"><span data-volume-label="musicVolume">${sound.settings.musicVolume}%</span></div><div class="sound-row"><span>効果音<small>カード・ドロー・UNO・勝利</small></span><button class="switch ${sound.settings.effects?'on':''}" role="switch" aria-checked="${sound.settings.effects}" data-action="effects" aria-label="効果音を切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.effectsVolume}" data-volume="effectsVolume" aria-label="効果音の音量"><span data-volume-label="effectsVolume">${sound.settings.effectsVolume}%</span></div><div class="sound-row"><span>ボイス<small>専用に調整した短いゲームコール</small></span><button class="switch ${sound.settings.voices?'on':''}" role="switch" aria-checked="${sound.settings.voices}" data-action="voices" aria-label="ボイスを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.voiceVolume}" data-volume="voiceVolume" aria-label="ボイス音量"><span data-volume-label="voiceVolume">${sound.settings.voiceVolume}%</span></div><button class="small-game-button voice-test-button" data-action="test-voice">${icon('arrow')} ボイスをテスト</button><div class="sound-row"><span>残り時間の警告<small>自分の手番と試合終了の、最後の3秒だけ</small></span><button class="switch ${sound.settings.alerts?'on':''}" role="switch" aria-checked="${sound.settings.alerts}" data-action="alerts" aria-label="警告音を切り替え"></button></div><p class="audio-engine-status" data-audio-engine></p><p class="audio-footnote">スマホで聞こえない時は「音を開始」をタップ。<br>iPhoneのBGM音量は、端末側の音量ボタンでも調節してね。</p><a class="asset-credits" href="/credits.html" target="_blank" rel="noopener">音源・素材のクレジット</a>`;
   if(type==='create-room'||type==='room-settings') {
     const editing=type==='room-settings',host=!editing||state.hostId===state.selfId;
     return `${dialogHead(editing?'ルーム設定':'部屋を作成')}<p class="setup-description">${editing?'このルームで遊ぶルール':'自分たちだけのルールで、カードパーティー。'}</p>${setupForm(draft,!host)}<button class="game-button ${host?'green':'blue'}" data-action="${host?editing?'save-room-settings':'create-configured':'close'}">${host?editing?'設定を保存':'作成する':'閉じる'} ${icon('check')}</button>`;
   }
   if(type==='wild')return `${dialogHead('次は、何色？')}<div class="color-wheel">${COLORS.map(c=>`<button class="color-choice ${c}" style="--swatch:${SWATCHES[c]}" data-action="color" data-color="${c}" aria-label="${COLOR_NAMES[c]}を選ぶ"><span>${SHAPES[c]}</span><strong>${COLOR_NAMES[c]}</strong></button>`).join('')}<span class="wheel-center">COLOR</span></div><p class="color-prompt">好きな色をタップ</p>`;
   if(type==='swap')return `${dialogHead('誰と交換する？')}<p class="dialog-description">7のカードで、相手の手札とまるごと交換！</p><div class="swap-players">${state.players.filter(p=>p.id!==state.selfId).map(p=>`<button data-action="swap-target" data-player="${p.id}">${avatar(p)}<strong>${esc(p.name)}</strong><span>手札 ${p.count}枚</span></button>`).join('')}</div>`;
-  if(type==='help')return `${dialogHead('遊び方')}<div class="rule-list">${[['色か数字を合わせて出す','場と同じ色・数字・記号のカードをタップ。先に手札をすべて出したら勝ち！'],['出せなければ山札をタップ','1枚引いて、出せる場合はそのカードを出せるよ。「強制プレイ」がOFFならパスもOK。'],['手札2枚になったらUNO!','自分の番にUNOボタンを押してから出そう。忘れたところを指摘されると2枚追加！'],['アクションで大逆転','スキップ・リバース・+2・ワイルド・+4で流れを変えよう。+4は今の色を持っていない時だけ。']].map((r,i)=>`<div class="rule-item"><span class="rule-num">${i+1}</span><div><strong>${r[0]}</strong><p>${r[1]}</p></div></div>`).join('')}</div><div class="special-rules"><strong>追加ルール</strong><p>7枚交換：7で選んだ相手と手札交換。<br>0–7：0で全員の手札が次の人へ、7で相手と交換。<br>スタッキング：同じ+2同士・+4同士を重ねられる。<br>2vs2：向かいの席が味方。どちらかが上がるとチームの勝ち。<br>時間切れ：残りカードの合計点が少ない人・チームが勝ち。数字はその数字、記号は20点、ワイルドは50点。</p></div><p class="dialog-description">UNO忘れの指摘は、次の人が出すか引くまで。<br>通信が30秒切れるとCPUが代行。戻ったら自分で操作できるよ。</p><button class="game-button green" data-action="close">わかった！ ${icon('check')}</button>`;
+  if(type==='help')return `${dialogHead('遊び方')}<div class="rule-list">${[['色か数字を合わせて出す','場と同じ色・数字・記号を選択。中央へドラッグするかダブルタップで出そう。先に全部出したら勝ち！'],['出せなければ山札をタップ','1枚引いて、出せる場合はそのカードを出せるよ。「強制プレイ」がOFFならパスもOK。'],['手札2枚になったらUNO!','自分の番にUNOボタンを押してから出そう。押すまで残り1枚になるカードは出せないよ。'],['アクションで大逆転','スキップ・リバース・+2・ワイルド・+4で流れを変えよう。+4は今の色を持っていない時だけ。']].map((r,i)=>`<div class="rule-item"><span class="rule-num">${i+1}</span><div><strong>${r[0]}</strong><p>${r[1]}</p></div></div>`).join('')}</div><div class="special-rules"><strong>追加ルール</strong><p>7枚交換：7で選んだ相手と手札交換。<br>0–7：0で全員の手札が次の人へ、7で相手と交換。<br>スタッキング：同じ+2同士・+4同士を重ねられる。<br>2vs2：向かいの席が味方。どちらかが上がるとチームの勝ち。<br>時間切れ：残りカードの合計点が少ない人・チームが勝ち。数字はその数字、記号は20点、ワイルドは50点。</p></div><p class="dialog-description">UNOはカードを出す前に必須。<br>通信が30秒切れるとCPUが代行。戻ったら自分で操作できるよ。</p><button class="game-button green" data-action="close">わかった！ ${icon('check')}</button>`;
   if(type==='leave')return `${dialogHead('ルームを退出する？')}<p class="dialog-description">${state?.phase==='playing'?'対戦が続く場合は、あなたの代わりにCPUがプレイします。':'また遊ぶ時は、新しいルームを作るか参加してね。'}</p><div class="dialog-buttons"><button class="game-button gold" data-action="confirm-leave">退出する</button><button class="small-game-button" data-action="close">もう少し遊ぶ</button></div>`;
   if(type==='log')return `${dialogHead('ゲームの履歴')}<div class="event-log">${[...(state?.events||[])].reverse().map(e=>`<div class="log-entry"><span class="log-time">${new Date(e.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span><span>${esc(e.text)}</span></div>`).join('')}</div>`;
   if(type==='game-settings')return `${dialogHead('ゲーム設定')}<div class="game-setting-summary"><span>ROOM <b>${state.code}</b></span><span>${state.settings.mode==='teams'?'2 vs 2':'個人戦'} · ${state.settings.roundMinutes?`${state.settings.roundMinutes}分`:'時間無制限'}</span><span>CPU：${DIFFICULTIES[state.settings.botDifficulty]||'普通'}</span><span>スタッキング ${state.settings.stackDraw?'ON':'OFF'}</span></div><div class="dialog-buttons"><button class="game-button blue" data-action="audio">${icon('sound')}サウンド設定</button><button class="small-game-button" data-action="help">遊び方・ルール</button><button class="small-game-button" data-action="fullscreen">${icon('fullscreen')}全画面表示</button><button class="quiet-button" data-action="leave">ルームを退出する</button></div>`;
@@ -191,7 +200,7 @@ function dialogHTML(type) {
     const won=state.rankings.find(p=>p.id===state.selfId)?.won,host=state.hostId===state.selfId;
     const points=state.events.findLast(e=>e.type==='win')?.points||0;
     const title=state.draw?'引き分け！':won?'お見事！ 勝利！':'もう一度トライ！';
-    return `<div class="result-ribbon ${won?'victory':''}">${title}</div><div class="result-body"><div class="winner-card"><span class="winner-caption">${state.draw?'DRAW':'WINNER'}</span><div class="winner-trophy">${state.draw?'🤝':'🏆'}</div>${avatar(winner||me)}<strong>${state.draw?'ナイスゲーム！':state.winnerTeam!==null?`TEAM ${state.winnerTeam+1}`:esc(winner?.name)}</strong><b>${state.draw?'±0':`+${points}`}<small>POINTS</small></b></div><div class="result-board"><div class="rank-head"><span>順位</span><span>プレイヤー</span><span>残り点数</span></div>${state.rankings.map((p,i)=>`<div class="rank-row ${p.won?'winner':''}"><span class="rank-position">${state.draw?'—':i+1}<small>${i===0&&!state.draw?'st':''}</small></span>${avatar(p)}<span class="rank-name">${esc(p.name)}${p.id===state.selfId?'<small>YOU</small>':''}</span><span class="rank-score">${p.points}</span></div>`).join('')}<p class="result-explanation">${state.events.findLast(e=>e.type==='win')?.timed?'時間切れ！ 残りポイントで判定しました。':'相手の残りカード分のポイントを獲得。'}</p><p class="result-total">あなたの累計スコア <strong>${me?.score||0} pt</strong></p></div></div><div class="result-actions">${host?'<button class="game-button gold" data-action="rematch">もう一度あそぶ '+icon('rotate')+'</button><button class="small-game-button" data-action="back-lobby">待機ルームへ</button>':'<p class="waiting-host">ホストが次のゲームを準備しています…</p>'}<button class="quiet-button" data-action="leave">退出する</button></div>`;
+    return `<div class="result-ribbon ${won?'victory':''}">${title}</div><div class="result-body"><div class="winner-card"><span class="winner-caption">${state.draw?'DRAW':'WINNER'}</span><div class="winner-trophy">${icon(state.draw?'users':'trophy')}</div>${avatar(winner||me)}<strong>${state.draw?'ナイスゲーム！':state.winnerTeam!==null?`TEAM ${state.winnerTeam+1}`:esc(winner?.name)}</strong><b>${state.draw?'±0':`+${points}`}<small>POINTS</small></b></div><div class="result-board"><div class="rank-head"><span>順位</span><span>プレイヤー</span><span>残り点数</span></div>${state.rankings.map((p,i)=>`<div class="rank-row ${p.won?'winner':''}"><span class="rank-position">${state.draw?'—':i+1}<small>${i===0&&!state.draw?'st':''}</small></span>${avatar(p)}<span class="rank-name">${esc(p.name)}${p.id===state.selfId?'<small>YOU</small>':''}</span><span class="rank-score">${p.points}</span></div>`).join('')}<p class="result-explanation">${state.events.findLast(e=>e.type==='win')?.timed?'時間切れ！ 残りポイントで判定しました。':'相手の残りカード分のポイントを獲得。'}</p><p class="result-total">あなたの累計スコア <strong>${me?.score||0} pt</strong></p></div></div><div class="result-actions">${host?'<button class="game-button gold" data-action="rematch">もう一度あそぶ '+icon('rotate')+'</button><button class="small-game-button" data-action="back-lobby">待機ルームへ</button>':'<p class="waiting-host">ホストが次のゲームを準備しています…</p>'}<button class="quiet-button" data-action="leave">退出する</button></div>`;
   }
   return '';
 }
@@ -205,6 +214,7 @@ function openDialog(type) {
 }
 function closeDialog(resetWild=true) { $('dialog',modalRoot)?.close();modalRoot.innerHTML='';dialogType=null;if(resetWild){wildCardId=null;swapCardId=null;} }
 function updateClock() {
+  updateAmbience();
   if(!state){feedback.reset();return;}
   const status=feedback.update(state,Date.now()+serverOffset,{connected,visible:!document.hidden});
   const panel=$('[data-turn-panel]');
@@ -265,7 +275,7 @@ socket.on('state',next=>{
   const play=events.findLast(e=>e.type==='play');
   let from;
   if(play) {
-    const el=play.actorId===next.selfId?$(`[data-card="${play.card.id}"]`):$(`[data-player-id="${play.actorId}"] .avatar-wrap`);
+    const el=play.actorId===next.selfId?$(`[data-card="${play.card.id}"]`):$(`[data-player-id="${play.actorId}"] .mini-hand`);
     if(el)from=el.getBoundingClientRect();
   }
   state=next;serverOffset=next.serverNow-Date.now();
@@ -281,23 +291,25 @@ socket.on('state',next=>{
   updateRoomURL(next.code);
   if(before?.phase!==next.phase) { closeDialog();reactionOpen=false; }
   if(dialogType==='wild'&&(next.currentId!==next.selfId||!next.playableIds.includes(wildCardId)))closeDialog();
-  if(before?.code!==next.code||before?.round!==next.round){feedback.reset();sound.resetFeedback();}
+  if(before?.code!==next.code||before?.round!==next.round){feedback.reset();sound.resetFeedback();finishUntil=0;finishKey=null;}
   const fresh=events.filter(e=>Date.now()+serverOffset-e.at<4000);
   for(const name of eventVoices(fresh))sound.announce(name);
   render();
-  if(play&&from)animateCard(play.card,from,play.color);
+  const winning=play&&events.some(e=>e.type==='win'&&!e.timed&&e.actorId===play.actorId);
+  if(winning){finishKey=`${next.code}:${next.round}`;finishUntil=Date.now()+1850;animateWinningCard(play,from);}
+  else if(play&&from)animateCard(play.card,from,play.color);
   for(const e of events)if(e.type==='draw')animateDraw(e.actorId,e.amount);
   if(play?.amount&&!next.drawStack)animateDraw(play.targetId,play.amount,180);
   const latest=events.at(-1);
   if(latest) {
-    if(latest.type==='win') { sound.effect('win');if(!reducedMotion)confetti(); }
+    if(latest.type==='win'&&!winning) { sound.effect('win');if(!reducedMotion)confetti(); }
     else if(latest.type==='uno'||play?.uno) { sound.effect('uno');burst('UNO!'); }
     else if(play) { const value=play.card.value;sound.effect(value==='reverse'?'reverse':value==='skip'?'skip':value==='wild'||value==='wild4'?'wild':'play');if(['reverse','skip','draw2','wild4'].includes(value))burst(({reverse:'REVERSE!',skip:'SKIP!',draw2:'+2',wild4:'+4'})[value]); }
     else if(latest.type==='draw'||latest.type==='catch')sound.effect('draw');
     if(play?.exchange)burst(play.exchange.kind==='swap'?'HAND SWAP!':'ROTATE!');
   }
   if(dialogType==='swap'&&(next.currentId!==next.selfId||!next.playableIds.includes(swapCardId)))closeDialog();
-  if(next.phase==='finished'&&dialogType!=='result')openDialog('result');
+  if(next.phase==='finished'&&dialogType!=='result'){clearTimeout(resultTimer);const delay=Math.max(0,finishUntil-Date.now());resultTimer=setTimeout(()=>{if(state?.phase==='finished'&&state.code===next.code&&state.round===next.round)openDialog('result');},delay);}else if(next.phase!=='finished'){clearTimeout(resultTimer);finishUntil=0;finishKey=null;}
 });
 socket.on('reaction',data=>{
   const el=data.playerId===state?.selfId?$('.self-player'):$(`[data-player-id="${data.playerId}"]`);
@@ -356,6 +368,7 @@ async function play(cardId,color,targetId) {
     if(card?.value==='wild4'&&!state.drawStack)throw new Error('+4は、今の色のカードがない時だけ使えるよ');
     throw new Error(state.drawnCardId?'今引いたカードを出すか、パスしてね':'同じ色・数字・記号のカードを選んでね');
   }
+  if(state.mustCallUno){$('.uno-button')?.classList.add('uno-required');setTimeout(()=>$('.uno-button')?.classList.remove('uno-required'),900);throw new Error('先にUNOボタンを押してね');}
   const c=state.hand.find(c=>c.id===cardId);
   if(c?.value==='7'&&(state.settings.sevenSwap||state.settings.zeroSeven)&&state.hand.length>1&&!targetId){swapCardId=cardId;openDialog('swap');return;}
   if(c?.color==='wild'&&!color) { wildCardId=cardId;openDialog('wild');return; }
@@ -382,6 +395,7 @@ document.addEventListener('submit',e=>{if(e.target.dataset.form==='join'){e.prev
 document.addEventListener('click',e=>{
   const button=e.target.closest('[data-action]');if(!button||button.disabled)return;
   const action=button.dataset.action;
+  if(action==='play'){if(Date.now()>=ignoreCardClickUntil)selectCard(button.dataset.card);return;}
   if(!['play','color','draw','uno','reaction','test-audio'].includes(action))sound.effect('click');
   if(action==='home'){if(state)openDialog('leave');else{menu='home';render();}return;}
   if(action==='classic'||action==='friends'){menu=action;render();return;}
@@ -415,7 +429,7 @@ document.addEventListener('click',e=>{
   }
   if(action==='test-voice'){
     sound.unlock({gesture:true});sound.set('voices',true);if(!sound.settings.voiceVolume)sound.set('voiceVolume',85);
-    sound.cancelVoices();sound.announce('red');sound.announce('blue');sound.announce('uno');toast('日本語のボイスをテストします');return;
+    sound.cancelVoices();sound.announce('red');sound.announce('blue');sound.announce('uno');toast('ゲーム用ボイスをテストします');return;
   }
   if(action==='test-audio'){sound.test().then(ok=>toast(ok?'テスト音を再生しました':'再生できませんでした。Safariで開き直して試してね',!ok));return;}
   if(action==='leave'){openDialog('leave');return;}
@@ -446,8 +460,7 @@ document.addEventListener('click',e=>{
     else if(action==='pass')await send('game:pass');
     else if(action==='uno')await send('game:uno');
     else if(action==='catch')await send('game:catch');
-    else if(action==='play')await play(button.dataset.card);
-    else if(action==='color'){const id=wildCardId,color=button.dataset.color;closeDialog();await play(id,color);}
+        else if(action==='color'){const id=wildCardId,color=button.dataset.color;closeDialog();await play(id,color);}
     else if(action==='swap-target'){const id=swapCardId,target=button.dataset.player;closeDialog();await play(id,undefined,target);}
     else if(action==='reaction'){await send('reaction',{emoji:button.dataset.emoji});reactionOpen=false;render();}
     else if(action==='confirm-leave'){await send('room:leave');forgetSession();state=null;reactionOpen=false;closeDialog();menu='home';updateRoomURL(null);render();}
@@ -461,11 +474,11 @@ async function uploadAvatar(file){
     if(file.size>12*1024*1024)throw Error('12MB以内の画像を選んでね');
     const url=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});
     const img=new Image();await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('画像を開けませんでした。別の画像を選んでね'));img.src=url;});
-    const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;const ctx=canvas.getContext('2d');
-    const side=Math.min(img.naturalWidth,img.naturalHeight);ctx.fillStyle='#e8f3fa';ctx.fillRect(0,0,128,128);
-    ctx.drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,0,0,128,128);
-    let image=canvas.toDataURL('image/jpeg',.72);if(image.length>24000)image=canvas.toDataURL('image/jpeg',.45);
-    if(image.length>24000)throw Error('画像を小さくして、もう一度選んでね');
+    const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;const ctx=canvas.getContext('2d');
+    const side=Math.min(img.naturalWidth,img.naturalHeight);ctx.fillStyle='#e8f3fa';ctx.fillRect(0,0,512,512);
+    ctx.drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,0,0,512,512);
+    let image=canvas.toDataURL('image/webp',.92);if(!image.startsWith('data:image/webp;'))image=canvas.toDataURL('image/jpeg',.9);if(image.length>96000)image=canvas.toDataURL('image/jpeg',.76);
+    if(image.length>96000)throw Error('画像を小さくして、もう一度選んでね');
     profile.image=image;write('uno-profile',profile);if(dialogType==='profile')openDialog('profile');
   }catch(e){toast(e.message||'画像を読み込めませんでした',true);}
 }
@@ -524,5 +537,84 @@ function flyDeal(step,run){
 }
 let resizeTimer;
 window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(state)render();},100);});
+
+function updateAmbience(){
+  const index=themeIndex(Date.now()-ambienceStarted);if(index===ambience)return;
+  ambience=index;const theme=THEMES[index];document.body.dataset.tableTheme=theme.id;
+  document.documentElement.style.setProperty('--scene-image',`url("${theme.background}")`);sound.setTheme(index);
+  const next=new Image();next.src=THEMES[(index+1)%THEMES.length].background;
+}
+function selectCard(id){
+  if(!state?.hand.some(c=>c.id===id))return;
+  cardInput.selected=id;
+  for(const el of document.querySelectorAll('.hand-card')){const selected=el.dataset.card===id;el.classList.toggle('is-selected',selected);el.setAttribute('aria-pressed',String(selected));}
+}
+function clearCardDrag(){
+  if(dragView){dragView.node.remove();dragView.original?.classList.remove('being-dragged');dragView=null;}
+  $('.center-play-area')?.classList.remove('drop-ready');
+}
+let lastCardCommit={id:null,at:0};
+function commitCard(id){if(lastCardCommit.id===id&&Date.now()-lastCardCommit.at<700)return;lastCardCommit={id,at:Date.now()};perform(()=>play(id));}
+app.addEventListener('dblclick',e=>{const el=e.target.closest('.hand-card');if(!el||el.disabled)return;e.preventDefault();selectCard(el.dataset.card);commitCard(el.dataset.card);});
+app.addEventListener('pointerdown',e=>{
+  const el=e.target.closest('.hand-card');if(!el||el.disabled||e.isPrimary===false||e.button>0)return;
+  e.preventDefault();activePointer=e.pointerId;selectCard(el.dataset.card);cardInput.down(el.dataset.card,e.clientX,e.clientY,Date.now());
+  try{el.setPointerCapture(e.pointerId);}catch{}
+});
+app.addEventListener('pointermove',e=>{
+  if(e.pointerId!==activePointer||!cardInput.pointer)return;
+  const move=cardInput.move(e.clientX,e.clientY,Date.now());if(!move?.dragging)return;e.preventDefault();
+  if(!dragView){
+    const original=$(`[data-card="${move.cardId}"]`),card=state.hand.find(c=>c.id===move.cardId);if(!original||!card)return;
+    const r=original.getBoundingClientRect(),node=document.createElement('div');node.className='dragged-card';node.innerHTML=cardHTML(card);
+    node.style.setProperty('--card-w',r.width+'px');node.style.setProperty('--card-h',r.height+'px');fxRoot.append(node);original.classList.add('being-dragged');dragView={node,original,width:r.width,height:r.height};
+  }
+  dragView.node.style.transform=`translate(${e.clientX-dragView.width*.5}px,${e.clientY-dragView.height*.72}px) rotate(-5deg) scale(1.06)`;
+  $('.center-play-area')?.classList.toggle('drop-ready',insideDropZone(e.clientX,e.clientY,$('.center-play-area')?.getBoundingClientRect()));
+},{passive:false});
+function finishPointer(e){
+  if(e.pointerId!==activePointer||!cardInput.pointer)return;e.preventDefault();ignoreCardClickUntil=Date.now()+650;
+  const result=cardInput.up(e.clientX,e.clientY,Date.now(),$('.center-play-area')?.getBoundingClientRect());activePointer=null;clearCardDrag();
+  if(result?.commit)commitCard(result.cardId);
+}
+app.addEventListener('pointerup',finishPointer);
+app.addEventListener('pointercancel',()=>{activePointer=null;cardInput.cancel();clearCardDrag();});
+app.addEventListener('lostpointercapture',()=>{if(cardInput.pointer){activePointer=null;cardInput.cancel();clearCardDrag();}});
+app.addEventListener('keydown',e=>{
+  const el=e.target.closest('.hand-card');if(!el||el.disabled)return;
+  if(e.key==='Enter'){e.preventDefault();selectCard(el.dataset.card);commitCard(el.dataset.card);}
+  else if(e.key===' '){e.preventDefault();selectCard(el.dataset.card);}
+  else if(e.key==='Escape'){cardInput.selected=null;document.querySelectorAll('.hand-card.is-selected').forEach(el=>el.classList.remove('is-selected'));}
+});
+
+function animateWinningCard(play,from){
+  const target=$('.discard-slot')?.getBoundingClientRect(),board=$('.game-screen');if(!target||!board)return;
+  const token=finishKey,origin=from||{x:innerWidth/2-45,y:innerHeight-190,width:90,height:135};
+  const card=document.createElement('div');card.className='slam-card';card.innerHTML=cardHTML(play.card,'',play.card.color==='wild'?play.color:null);fxRoot.append(card);board.classList.add('finishing');
+  const x=target.x+target.width/2-45,y=target.y+target.height/2-67.5;
+  const atOrigin=`translate(${origin.x}px,${origin.y}px) rotate(-8deg) scale(${Math.min(1.5,origin.width/90)})`;
+  if(!reducedMotion)card.animate([
+    {transform:atOrigin,filter:'drop-shadow(0 5px 4px #0003)',offset:0},
+    {transform:`translate(${x}px,${y-155}px) rotate(-18deg) scale(1.7)`,filter:'drop-shadow(0 60px 18px #0005)',offset:.47},
+    {transform:`translate(${x}px,${y-170}px) rotate(10deg) scale(1.8)`,filter:'drop-shadow(0 65px 22px #0005)',offset:.66},
+    {transform:`translate(${x}px,${y}px) rotate(9deg) scale(.8)`,filter:'drop-shadow(0 2px 2px #0005)',offset:.78},
+    {transform:`translate(${x}px,${y-12}px) rotate(9deg) scale(1.04)`,offset:.88},
+    {transform:`translate(${x}px,${y}px) rotate(9deg) scale(${target.width/90})`,offset:1}
+  ],{duration:900,easing:'linear',fill:'forwards'});
+  else card.style.transform=`translate(${x}px,${y}px) scale(${target.width/90})`;
+  setTimeout(()=>{
+    if(finishKey!==token){card.remove();return;}
+    board.classList.remove('finishing');sound.effect('slam');
+    if(!reducedMotion){board.classList.add('table-hit');setTimeout(()=>board.classList.remove('table-hit'),500);}
+    const wave=document.createElement('span');wave.className='slam-wave';wave.style.left=target.x+target.width/2+'px';wave.style.top=target.y+target.height/2+'px';fxRoot.append(wave);setTimeout(()=>wave.remove(),800);
+    if(!reducedMotion){confetti();for(let i=0;i<22;i++){
+      const dust=document.createElement('i');dust.className='slam-spark';const angle=Math.PI*2*i/22;
+      dust.style.cssText=`left:${target.x+target.width/2}px;top:${target.y+target.height/2}px;--dx:${Math.cos(angle)*(80+Math.random()*90)}px;--dy:${Math.sin(angle)*(45+Math.random()*65)}px;--spark:${i%3===0?'#fff':'#ffe181'}`;
+      fxRoot.append(dust);setTimeout(()=>dust.remove(),900);
+    }}
+    setTimeout(()=>{if(finishKey===token)sound.effect('win');},300);
+  },reducedMotion?80:702);
+  setTimeout(()=>card.remove(),1000);
+}
 
 render();socket.connect();

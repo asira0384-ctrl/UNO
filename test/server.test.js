@@ -64,3 +64,17 @@ test('real clients join, play, keep hands private, reconnect, and restore after 
   const intruder=await connect(`http://127.0.0.1:${nextAddress.port}`);clients.push(intruder);
   assert.equal((await request(intruder,'room:resume',{code:created.code,token:'wrong'})).ok,false);
 });
+
+test('a network client must call UNO; a forged declared flag cannot bypass it',async t=>{
+  const dataDir=await mkdtemp(path.join(tmpdir(),'uno-required-'));
+  const server=await createGameServer({dataDir,botDelay:100000,dealDelay:0});const clients=[];
+  t.after(async()=>{clients.forEach(c=>c.disconnect());await server.close();await rm(dataDir,{recursive:true,force:true});});
+  const address=await server.listen(0,'127.0.0.1'),url=`http://127.0.0.1:${address.port}`;
+  const a=await connect(url),b=await connect(url);clients.push(a,b);
+  const created=await request(a,'room:create',{name:'A'});await request(b,'room:join',{code:created.code,name:'B'});await request(a,'game:start');
+  const r=server.rooms.get(created.code),p=r.players.find(p=>p.id===created.playerId);
+  r.deck.push(...p.hand);const index=r.deck.findIndex(c=>/^\d$/.test(c.value));p.hand=[r.deck.splice(index,1)[0],r.deck.pop()];r.color=p.hand[0].color;
+  const id=p.hand[0].id,revision=r.revision;
+  const blocked=await request(a,'game:play',{cardId:id,uno:true});assert.equal(blocked.ok,false);assert.match(blocked.error,/UNO/);assert.equal(p.hand.length,2);assert.equal(r.revision,revision);
+  assert.equal((await request(a,'game:uno')).ok,true);assert.equal((await request(a,'game:play',{cardId:id})).ok,true);assert.equal(p.hand.length,1);assert.equal(p.uno,true);
+});

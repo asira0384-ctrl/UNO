@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { createRoom,createPlayer,startGame,playCard,drawCard,passTurn,botMove,finishOnTime,publicState,canPlay } from '../src/game.js';
+import { createRoom,createPlayer,startGame,playCard,drawCard,passTurn,botMove,finishOnTime,publicState,canPlay,callUno } from '../src/game.js';
 
 const c=(color,value)=>({id:randomUUID(),color,value});
 function room(settings={},count=4){
@@ -12,12 +12,12 @@ function room(settings={},count=4){
 }
 test('seven requires a valid target, then swaps complete hands without changing player identities',()=>{
   const r=room({sevenSwap:true}),[a,b]=r.players;a.hand=[c('red','7'),c('blue','4')];b.hand=[c('yellow','3'),c('yellow','8'),c('green','2')];
-  const seven=a.hand[0],before=JSON.stringify(r),bCards=b.hand.map(c=>c.id);
+  callUno(r,a.id);const seven=a.hand[0],before=JSON.stringify(r),bCards=b.hand.map(c=>c.id);
   assert.throws(()=>playCard(r,a.id,seven.id),/交換/);assert.equal(JSON.stringify(r),before);
   playCard(r,a.id,seven.id,undefined,false,b.id);assert.deepEqual(a.hand.map(c=>c.id),bCards);assert.equal(b.hand.length,1);assert.equal(b.uno,true);assert.equal(r.events.at(-1).exchange.targetId,b.id);
 });
 test('last seven finishes immediately without requiring an exchange target',()=>{
-  const r=room({zeroSeven:true}),a=r.players[0];a.hand=[c('red','7')];playCard(r,a.id,a.hand[0].id);assert.equal(r.phase,'finished');assert.equal(r.winnerId,a.id);
+  const r=room({zeroSeven:true}),a=r.players[0];a.hand=[c('red','7')];callUno(r,a.id);playCard(r,a.id,a.hand[0].id);assert.equal(r.phase,'finished');assert.equal(r.winnerId,a.id);
 });
 test('zero rotates each hand once in the current direction',()=>{
   for(const dir of [1,-1]){
@@ -38,7 +38,7 @@ test('forced play also applies to a newly drawn timeout card',()=>{
 test('team victory awards both partners and only counts opponents hands',()=>{
   const r=room({mode:'teams'}),a=r.players[0];a.hand=[c('red','2')];
   r.players[1].hand=[c('blue','3')];r.players[2].hand=[c('blue','9')];r.players[3].hand=[c('green','4')];
-  playCard(r,a.id,a.hand[0].id);assert.equal(r.winnerTeam,0);assert.equal(r.players[0].score,7);assert.equal(r.players[2].score,7);assert.equal(r.players[1].score,0);
+  callUno(r,a.id);playCard(r,a.id,a.hand[0].id);assert.equal(r.winnerTeam,0);assert.equal(r.players[0].score,7);assert.equal(r.players[2].score,7);assert.equal(r.players[1].score,0);
   assert.deepEqual(r.rankings.filter(p=>p.won).map(p=>p.id).sort(),[a.id,r.players[2].id].sort());
 });
 test('2vs2 requires four players and fixes the room capacity at four',()=>{

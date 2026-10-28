@@ -183,6 +183,7 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false, 
       throw new Error('+4は、今の色のカードを持っていない時だけ出せます');
     throw new Error(room.drawnCardId ? '今引いたカードだけ出せます' : '同じ色・数字・記号のカードを出してね');
   }
+  if (mustDeclareUno(room,player)) throw new Error('先にUNOボタンを押してね');
   if (card.color === 'wild' && !COLORS.includes(chosenColor)) throw new Error('次の色を選んでね');
   const swap = card.value === '7' && (room.settings.sevenSwap || room.settings.zeroSeven) && player.hand.length > 1;
   const swapTarget = swap ? room.players.find(p => p.id === swapTargetId && p.id !== playerId) : null;
@@ -192,7 +193,7 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false, 
   player.hand.splice(index, 1);
   room.discard.push(card); room.color = card.color === 'wild' ? chosenColor : card.color;
   const wasArmed = player.unoArmed;
-  const didUno = declared || wasArmed;
+  const didUno = wasArmed;
   player.unoArmed = false;
   player.uno = player.hand.length === 1 && didUno;
 
@@ -237,11 +238,13 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false, 
   advance(room, steps);
 }
 
+export function mustDeclareUno(room,player) { return room.phase==='playing' && ((player?.hand.length===2 && !player.unoArmed)||(player?.hand.length===1 && !player.uno)); }
+
 export function drawCard(room, playerId, timedOut = false) {
   const player = assertTurn(room, playerId);
   if (room.drawnCardId) {
     if (timedOut) {
-      if (room.settings.forcePlay) {
+      if (room.settings.forcePlay && !mustDeclareUno(room,player)) {
         const c = player.hand.find(c => c.id === room.drawnCardId);
         return playCard(room,playerId,c.id,bestColor(player.hand),false,room.players[nextIndex(room)].id);
       }
@@ -258,7 +261,7 @@ export function drawCard(room, playerId, timedOut = false) {
   if (playable) room.drawnCardId = cards[0].id;
   event(room, 'draw', `${player.name} が${cards.length}枚引いた${timedOut ? '（時間切れ）' : ''}`,
     { actorId: player.id, amount: cards.length, timedOut, playable: Boolean(playable) });
-  if (timedOut && room.settings.forcePlay && candidatePlayable) {
+  if (timedOut && room.settings.forcePlay && candidatePlayable && !mustDeclareUno(room,player)) {
     room.drawnCardId = cards[0].id;
     return playCard(room,playerId,cards[0].id,bestColor(player.hand),false,room.players[nextIndex(room)].id);
   }
@@ -269,7 +272,7 @@ export function drawCard(room, playerId, timedOut = false) {
 export function passTurn(room, playerId, timedOut = false) {
   const player = assertTurn(room, playerId);
   if (!room.drawnCardId) throw new Error('出せるカードがなければ山札から引いてね');
-  if (room.settings.forcePlay) throw new Error('強制プレイONです。引いたカードを出してね');
+  if (room.settings.forcePlay && !(timedOut && mustDeclareUno(room,player))) throw new Error('強制プレイONです。引いたカードを出してね');
   room.pendingUno = null;
   event(room, 'pass', `${player.name} がパスした${timedOut ? '（時間切れ）' : ''}`, { actorId: player.id });
   advance(room);
@@ -337,6 +340,7 @@ export function botMove(room, random = Math.random) {
   if (room.phase !== 'playing' || room.paused || !player?.bot) return;
   const move = chooseBotPlay(room, player, random);
   if (move) {
+    if(mustDeclareUno(room,player))callUno(room,player.id);
     playCard(room, player.id, move.card.id, move.color, move.declared, move.targetId);
   } else if (room.drawnCardId) passTurn(room, player.id);
   else drawCard(room, player.id);
@@ -352,7 +356,7 @@ export function publicState(room, playerId) {
     top: room.discard.at(-1) || null, color: room.color, direction: room.direction,
     currentId: currentPlayer(room)?.id, drawnCardId: self?.id === currentPlayer(room)?.id ? room.drawnCardId : null,
     drawStack: room.drawStack, pendingUnoId: room.pendingUno?.playerId || null,
-    unoArmed: self?.unoArmed || false, winnerId: room.winnerId, winnerTeam: room.winnerTeam ?? null, draw: room.draw || false,
+    mustCallUno: self?.id===currentPlayer(room)?.id && mustDeclareUno(room,self), unoArmed: self?.unoArmed || false, winnerId: room.winnerId, winnerTeam: room.winnerTeam ?? null, draw: room.draw || false,
     rankings: room.rankings.map(p => ({ ...p, won: p.won ?? p.id === room.winnerId })),
     events: room.events, turnEndsAt: room.turnEndsAt, roundEndsAt: room.roundEndsAt,
     dealUntil: room.dealUntil, dealStartedAt: room.dealStartedAt || 0, serverNow: Date.now(), paused: room.paused };

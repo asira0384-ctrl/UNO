@@ -1,6 +1,6 @@
 export function profileImage(value) {
   if(value===undefined || value===null || value==='')return null;
-  if(typeof value!=='string' || value.length>24000)throw new Error('アイコン画像を小さくして、もう一度選んでね');
+  if(typeof value!=='string' || value.length>96000)throw new Error('アイコン画像を小さくして、もう一度選んでね');
   const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
   if(!match)throw new Error('PNG・JPEG・WebPの画像を選んでね');
   const bytes=Buffer.from(match[2],'base64');

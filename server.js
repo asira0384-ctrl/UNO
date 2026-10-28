@@ -71,7 +71,7 @@ export async function createGameServer(options = {}) {
   app.use(express.static(path.join(ROOT, 'public'), { etag: true, maxAge: 0 }));
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
-    maxHttpBufferSize: 48 * 1024, pingInterval: 20000, pingTimeout: 25000,
+    maxHttpBufferSize: 160 * 1024, pingInterval: 20000, pingTimeout: 25000,
     allowRequest(req, callback) {
       const origin = req.headers.origin;
       if (!origin) return callback(null, true);
@@ -269,7 +269,7 @@ export async function createGameServer(options = {}) {
       event(room, 'lobby', '次のゲームの準備をしよう'); publish(room);
     });
     for (const [name,action] of Object.entries({
-      'game:play': (r,p,d) => playCard(r,p.id,d.cardId,d.color,d.uno === true,d.targetId),
+      'game:play': (r,p,d) => playCard(r,p.id,d.cardId,d.color,false,d.targetId),
       'game:draw': (r,p) => drawCard(r,p.id),
       'game:pass': (r,p) => passTurn(r,p.id),
       'game:uno': (r,p) => callUno(r,p.id),

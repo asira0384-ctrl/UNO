@@ -73,13 +73,15 @@ test('UNO may be declared before discarding the second-last card',()=>{
   const {r,p}=scenario();p[0].hand=[card('red','2'),card('yellow','3')];callUno(r,p[0].id);
   playCard(r,p[0].id,p[0].hand[0].id);assert.equal(p[0].uno,true);assert.equal(r.pendingUno,null);
 });
-test('catch an undeclared UNO until the next action',()=>{
-  const {r,p}=scenario();p[0].hand=[card('red','2'),card('yellow','3')];playCard(r,p[0].id,p[0].hand[0].id);
-  assert.equal(r.pendingUno.playerId,p[0].id);catchUno(r,p[2].id);assert.equal(p[0].hand.length,3);assert.equal(r.pendingUno,null);
+test('UNO is mandatory before the second-last card, including forged declared flags',()=>{
+  const {r,p}=scenario();p[0].hand=[card('red','2'),card('yellow','3')];const before=JSON.stringify(r);
+  assert.throws(()=>playCard(r,p[0].id,p[0].hand[0].id),/UNO/);assert.equal(JSON.stringify(r),before);
+  assert.throws(()=>playCard(r,p[0].id,p[0].hand[0].id,undefined,true),/UNO/);assert.equal(JSON.stringify(r),before);
+  callUno(r,p[0].id);playCard(r,p[0].id,p[0].hand[0].id);assert.equal(p[0].uno,true);
 });
-test('catch window closes after the next player draws',()=>{
-  const {r,p}=scenario();p[0].hand=[card('red','2'),card('yellow','3')];playCard(r,p[0].id,p[0].hand[0].id);
-  drawCard(r,p[1].id);assert.throws(()=>catchUno(r,p[2].id),/指摘/);
+test('legacy undeclared one-card saves must declare before winning',()=>{
+  const {r,p}=scenario();p[0].hand=[card('red','2')];assert.throws(()=>playCard(r,p[0].id,p[0].hand[0].id),/UNO/);
+  callUno(r,p[0].id);playCard(r,p[0].id,p[0].hand[0].id);assert.equal(r.phase,'finished');
 });
 test('draw stacking allows only the same type and the recipient may take the total',()=>{
   const {r,p}=scenario(3,{stackDraw:true});p[0].hand.push(card('red','draw2'));p[1].hand.push(card('blue','draw2'),card('wild','wild4'));
@@ -88,7 +90,7 @@ test('draw stacking allows only the same type and the recipient may take the tot
   assert.equal(r.drawStack,4);const count=p[2].hand.length;drawCard(r,p[2].id);assert.equal(p[2].hand.length,count+4);assert.equal(r.drawStack,0);assert.equal(currentPlayer(r).id,p[0].id);
 });
 test('last action card applies its penalty before scoring',()=>{
-  const {r,p}=scenario(2,{stackDraw:true});p[0].hand=[card('red','draw2')];const count=p[1].hand.length;
+  const {r,p}=scenario(2,{stackDraw:true});p[0].hand=[card('red','draw2')];callUno(r,p[0].id);const count=p[1].hand.length;
   playCard(r,p[0].id,p[0].hand[0].id);assert.equal(r.phase,'finished');assert.equal(p[1].hand.length,count+2);assert.equal(r.winnerId,p[0].id);assert.ok(p[0].score>0);
 });
 test('discard pile is recycled without losing the current top',()=>{

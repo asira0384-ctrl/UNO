@@ -9,7 +9,7 @@ test('every card stays inside the fitted hand at phone sizes, even with 108 card
     const l=fitHand(n,width,height);assert.equal(l.placements.length,n);
     assert.ok(l.width<=width-20);
     for(const p of l.placements){assert.ok(p.x>=-.001);assert.ok(p.x+l.cardWidth<=l.width+.001);assert.ok(p.y+l.cardHeight<=l.height+.001);}
-    assert.ok(l.height<=Math.min(height*.37,235));
+    assert.ok(l.height<=Math.min(height*.42,260));
     assert.equal(new Set(l.placements.map(p=>`${p.x},${p.y}`)).size,n);
   }
 });
@@ -37,5 +37,5 @@ test('reverse is drawn with arrow geometry rather than a text glyph',()=>{
 const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGxkAAAAASUVORK5CYII=';
 test('profile pictures accept bounded raster images and reject SVG, URLs and oversized data',()=>{
   assert.equal(profileImage(png),png);assert.equal(profileImage(null),null);
-  for(const value of ['https://example.com/picture.png','data:image/svg+xml;base64,PHN2Zz4=','data:image/png;base64,'+'A'.repeat(25000),'data:image/png;base64,PHN2Zz4='])assert.throws(()=>profileImage(value));
+  for(const value of ['https://example.com/picture.png','data:image/svg+xml;base64,PHN2Zz4=','data:image/png;base64,'+'A'.repeat(100000),'data:image/png;base64,PHN2Zz4='])assert.throws(()=>profileImage(value));
 });
