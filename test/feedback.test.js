@@ -46,3 +46,6 @@ test('an armed UNO call is not repeated on the following discard',()=>{
   assert.deepEqual(eventVoices([{type:'uno'},{type:'play',card:{color:'red',value:'reverse'},uno:true,announceUno:false}]),['uno','reverse']);
   assert.deepEqual(eventVoices([{type:'draw',timedOut:true}]),[]);
 });
+test('skip and reverse each emit one action call, including a winning skip',()=>{
+  for(const value of ['skip','reverse'])assert.deepEqual(eventVoices([{type:'play',card:{color:'red',value},uno:false},{type:'win'}]),[value]);
+});

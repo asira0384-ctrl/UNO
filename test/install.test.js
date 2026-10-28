@@ -25,6 +25,16 @@ test('service worker registration uses the root scope and revalidates on update'
   new AppInstall(()=>{},env).register();assert.deepEqual(registered,['/sw.js',{updateViaCache:'none'}]);
   registered=null;env.isSecureContext=false;new AppInstall(()=>{},env).register();assert.equal(registered,null);
 });
+test('the rotated game frame receives install state only from its own parent origin',async()=>{
+  const env=environment(),sent=[];env.location={origin:'https://game.test'};env.parent={postMessage:(data,origin)=>sent.push({data,origin})};
+  const app=new AppInstall(()=>{},env);assert.equal(sent[0].data.type,'uno-install-ready');
+  const message=data=>({source:env.parent,origin:env.location.origin,data});
+  env.handlers.message({...message({type:'uno-install-state',canPrompt:true}),origin:'https://other.test'});assert.equal(app.canPrompt,false);
+  env.handlers.message(message({type:'uno-install-state',installed:false,canPrompt:true}));assert.equal(app.canPrompt,true);
+  const pending=app.prompt(),request=sent.at(-1).data;assert.equal(request.type,'uno-install-request');assert.equal(app.canPrompt,false);
+  env.handlers.message(message({type:'uno-install-state',installed:true,canPrompt:false}));env.handlers.message(message({type:'uno-install-result',id:request.id,accepted:true}));
+  assert.equal(await pending,true);assert.equal(app.installed,true);assert.equal(app.canPrompt,false);
+});
 async function worker() {
   const handlers={},storage=new Map(),pending=[],deleted=[];let networkFails=false,fetches=0;
   const key=req=>typeof req==='string'?req:req.url;

@@ -59,7 +59,7 @@ test('game calls play the purpose-built Japanese clip and stay queued in order',
 test('turn and extra narrations remain silent',t=>{
   const a=setup(t);a.unlock({gesture:true});let notes=0;a.tone=()=>notes++;a.hiss=()=>notes++;
   for(const name of ['click','turn','start','error','uno'])a.effect(name);assert.equal(notes,0);
-  for(const name of ['your-turn','hurry','ten-seconds','draw-four','skip','time-up'])assert.equal(a.announce(name),false);
+  for(const name of ['your-turn','hurry','ten-seconds','draw-four','time-up'])assert.equal(a.announce(name),false);
 });
 test('voice has an independent volume and switch',async t=>{
   const a=setup(t,{loadVoices:true,saved:{music:false,effects:false,voiceVolume:72}});a.unlock({gesture:true});await a.voiceLoading;
@@ -86,4 +86,24 @@ test('last-second ticks have a separate switch and the win can use a deep impact
   const a=setup(t);a.unlock({gesture:true});let notes=0;a.tone=()=>notes++;a.hiss=()=>notes++;
   a.set('alerts',false);a.effect('tick');assert.equal(notes,0);a.effect('deal');assert.equal(notes,2);
   notes=0;a.effect('slam');assert.ok(notes>=3);notes=0;a.set('alerts',true);a.effect('tick');assert.equal(notes,1);
+});
+test('repeated calls play five different takes, and skip is a voiced action',async t=>{
+  const a=setup(t,{loadVoices:true});a.unlock({gesture:true});await a.voiceLoading;
+  for(const name of ['red','blue','yellow','green','reverse','skip','uno']){
+    const played=[];
+    for(let i=0;i<6;i++){assert.equal(a.announce(name),true);played.push(a.voiceBusy.variant);a.voiceBusy.source.onended();}
+    assert.equal(new Set(played.slice(0,5)).size,5);assert.notEqual(played[4],played[5]);
+  }
+});
+test('paper effects vary without adding extra menu or turn sounds',t=>{
+  const a=setup(t);a.unlock({gesture:true});const played=[];let take=[];
+  a.tone=(...args)=>take.push(['tone',...args.slice(0,5)]);a.hiss=(...args)=>take.push(['hiss',...args]);
+  for(let i=0;i<5;i++){take=[];a.effect('skip');played.push(JSON.stringify(take));}assert.equal(new Set(played).size,5);
+  take=[];for(const name of ['click','turn','start','error','uno'])a.effect(name);assert.equal(take.length,0);
+});
+test('two quick skips keep one follow-up call without overlapping or growing an unlimited queue',async t=>{
+  const a=setup(t,{loadVoices:true});a.unlock({gesture:true});await a.voiceLoading;
+  assert.equal(a.announce('skip'),true);const first=a.voiceBusy.variant;
+  assert.equal(a.announce('skip'),true);assert.equal(a.announce('skip'),false);assert.equal(a.voiceQueue.length,1);
+  a.voiceBusy.source.onended();assert.equal(a.voiceBusy.name,'skip');assert.notEqual(a.voiceBusy.variant,first);assert.equal(a.voiceQueue.length,0);
 });

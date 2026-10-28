@@ -1,63 +1,79 @@
-"""Build short Japanese game calls with individually shaped timing and tone.
+"""Create 7 calls x 5 neural deliveries and a phone audio sprite.
 
-Development only: pyopenjtalk-plus, scipy, numpy and ffmpeg. The game ships
-only the finished MP3s. The Mei voice model attribution is in ASSETS.md.
+Dev: kokoro-onnx, misaki, fugashi, unidic-lite, jaconv, mojimoji,
+pyopenjtalk-plus, scipy, numpy, ffmpeg. Set UNO_VOICE_MODELS to the directory
+containing kokoro-v1.0.onnx and voices-v1.0.bin from the upstream release.
+Only finished MP3s are shipped; model weights are not included.
 """
 from pathlib import Path
-import json, subprocess, tempfile, wave
+import json,os,subprocess,tempfile
+# Upstream runtime initializes telemetry at import. Disable it BEFORE import,
+# so neither an uploader nor a persistent diagnostic identifier is created.
+# https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md
+os.environ['ORT_DISABLE_TELEMETRY']='1'
 import numpy as np
-from scipy.signal import butter, sosfilt
-import pyopenjtalk
+import onnxruntime as rt
+rt.disable_telemetry_events()
+from scipy.signal import butter,sosfilt,resample_poly
+from kokoro_onnx import Kokoro
+from misaki import ja
 
-OUT=Path(__file__).resolve().parents[1]/'public/assets/audio/voice'
-OUT.mkdir(parents=True,exist_ok=True)
-CALLS={'red':('レッド！',1.13,-1.6),'yellow':('イエロー！',1.14,-1.1),
-       'green':('グリーン！',1.12,-1.8),'blue':('ブルー！',1.09,-2.0),
-       'reverse':('リバース！',1.16,-2.2),'uno':('ウーノ！',1.13,-1.4)}
+ROOT=Path(__file__).resolve().parents[1]
+OUT=ROOT/'public/assets/audio/voice';OUT.mkdir(parents=True,exist_ok=True)
+MODELS=Path(os.environ['UNO_VOICE_MODELS'])
+opts=rt.SessionOptions();opts.intra_op_num_threads=4;opts.inter_op_num_threads=1
+session=rt.InferenceSession(str(MODELS/'kokoro-v1.0.onnx'),sess_options=opts,providers=['CPUExecutionProvider'])
+model=Kokoro.from_session(session,str(MODELS/'voices-v1.0.bin'))
+g2p=ja.JAG2P()
+CALLS={'red':'レッド','blue':'ブルー','yellow':'イエロー','green':'グリーン','reverse':'リバース','skip':'スキップ','uno':'ウーノ'}
+# Five neural deliveries with a consistent mixed timbre. Each is synthesized
+# anew with a different style vector, pace and phrase ending.
+TAKES=[
+    {'name':'bright','weights':(.74,.18,.08),'speed':1.06,'end':'!','presence':.06},
+    {'name':'crisp','weights':(.79,.12,.09),'speed':1.14,'end':'!!','presence':.09},
+    {'name':'warm','weights':(.66,.19,.15),'speed':1.02,'end':'.','presence':.035},
+    {'name':'rising','weights':(.70,.24,.06),'speed':1.09,'end':'!','presence':.07},
+    {'name':'firm','weights':(.64,.18,.18),'speed':1.12,'end':'!','presence':.08},
+]
+RATE=48000
+def write_mp3(path,stereo):
+    # A seekable output carries MP3 delay/padding metadata, so sprite offsets
+    # refer to decoded audio rather than the encoder's priming samples.
+    with tempfile.NamedTemporaryFile(dir=path.parent,suffix='.mp3',delete=False) as f:temporary=f.name
+    subprocess.run(['ffmpeg','-v','error','-y','-f','f32le','-ar',str(RATE),'-ac','2','-i','pipe:0','-c:a','libmp3lame','-b:a','192k','-write_xing','1',temporary],input=stereo.astype('<f4').tobytes(),check=True)
+    with open(temporary,'rb') as f:os.fsync(f.fileno())
+    os.replace(temporary,path)
+def master(samples,sr,presence):
+    samples=np.asarray(samples,dtype=np.float64)
+    block=round(sr*.01);rms=np.array([np.sqrt(np.mean(samples[i:i+block]**2)) for i in range(0,len(samples),block)])
+    voiced=np.flatnonzero(rms>max(.003,float(rms.max())*.03))
+    if not len(voiced):raise ValueError('Silent call')
+    samples=samples[max(0,int((voiced[0]*.01-.025)*sr)):min(len(samples),int((voiced[-1]*.01+.085)*sr))]
+    samples=sosfilt(butter(2,85,btype='highpass',fs=sr,output='sos'),samples)
+    samples+=presence*sosfilt(butter(2,[700,3300],btype='bandpass',fs=sr,output='sos'),samples)
+    gain=min(.20/max(.001,float(np.sqrt(np.mean(samples**2)))),.86/max(.001,float(np.max(np.abs(samples)))))
+    samples*=gain
+    fade=min(round(sr*.008),len(samples)//4);samples[:fade]*=np.linspace(0,1,fade);samples[-fade:]*=np.linspace(1,0,fade)
+    samples=resample_poly(samples,RATE,sr)
+    delay=round(.018*RATE);stereo=np.zeros((len(samples)+delay,2))
+    stereo[:len(samples),:]=samples[:,None];stereo[delay:delay+len(samples),1]+=samples*.025
+    if not .22<len(stereo)/RATE<1.65:raise ValueError(f'Unexpected call duration: {len(stereo)/RATE}')
+    return stereo
 
-for name,(text,speed,pitch) in CALLS.items():
-    x,sr=pyopenjtalk.tts(text,speed=speed,half_tone=pitch,predict_nani=False)
-    x=x.astype(np.float64)/32768
-    voiced=np.flatnonzero(np.abs(x)>.004)
-    x=x[max(0,voiced[0]-int(.014*sr)):min(len(x),voiced[-1]+int(.07*sr))]
-    x=sosfilt(butter(2,[125,8800],btype='bandpass',fs=sr,output='sos'),x)
-    # Close, clear game-announcer timbre with a restrained parallel body layer.
-    low=sosfilt(butter(2,1050,btype='lowpass',fs=sr,output='sos'),x)
-    x=np.tanh((x+low*.15)*1.4)
-    t=np.arange(len(x))/sr
-    x*=np.minimum(t/.008,1)*np.minimum((len(x)/sr-t)/.035,1)
-    x/=max(.01,float(np.max(np.abs(x))))
-    x*=.76
-    # Very short room response, distinct per call rather than a long echo tail.
-    delay=round(sr*(.024 if name!='reverse' else .032))
-    stereo=np.zeros((len(x)+delay*2,2))
-    stereo[:len(x),:]=x[:,None]
-    stereo[delay:delay+len(x),0]+=x*.065
-    stereo[delay*2:delay*2+len(x),1]+=x*.05
-    with tempfile.NamedTemporaryFile(suffix='.wav') as f:
-        with wave.open(f.name,'wb') as w:
-            w.setnchannels(2);w.setsampwidth(2);w.setframerate(sr)
-            w.writeframes((np.clip(stereo,-.95,.95)*32767).astype('<i2').tobytes())
-        subprocess.run(['ffmpeg','-v','error','-y','-i',f.name,'-ar','48000','-c:a','libmp3lame','-b:a','192k',str(OUT/f'{name}.mp3')],check=True)
-    print(name,round(len(stereo)/sr,2),'seconds')
-
-# A single audio sprite keeps all calls ready after the first phone gesture.
-rate=48000
-pieces=[np.zeros((round(.35*rate),2),dtype='<f4')]
-clips={}
-offset=.35
-for name in CALLS:
-    raw=subprocess.check_output(['ffmpeg','-v','error','-i',str(OUT/f'{name}.mp3'),
-                                 '-f','f32le','-ar',str(rate),'-ac','2','pipe:1'])
-    samples=np.frombuffer(raw,dtype='<f4').reshape(-1,2)
-    duration=len(samples)/rate
-    clips[name]={'offset':round(offset,6),'duration':round(duration,6)}
-    pieces.extend([samples,np.zeros((round(.12*rate),2),dtype='<f4')])
-    offset+=duration+.12
-subprocess.run(['ffmpeg','-v','error','-y','-f','f32le','-ar',str(rate),'-ac','2',
-                '-i','pipe:0','-c:a','libmp3lame','-b:a','192k',str(OUT.parent/'voice-calls.mp3')],
-               input=np.concatenate(pieces).astype('<f4').tobytes(),check=True)
-(OUT.parents[2]/'voice-clips.js').write_text(
-    '// Generated by scripts/make-voice-calls.py\n'
-    'export const VOICE_FILE="/assets/audio/voice-calls.mp3?v=1.5";\n'
-    'export const VOICE_CLIPS='+json.dumps(clips,separators=(',',':'))+';\n')
+pieces=[np.zeros((round(.35*RATE),2))];clips={};offset=.35;report=[]
+for name,text in CALLS.items():
+    clips[name]=[]
+    for index,take in enumerate(TAKES):
+        phonemes,_=g2p(text+take['end'])
+        style=sum(model.voices[voice]*weight for voice,weight in zip(['jf_alpha','jf_tebukuro','jm_kumo'],take['weights']))
+        samples,sr=model.create(phonemes,voice=style,speed=take['speed'],is_phonemes=True,trim=False)
+        stereo=master(samples,sr,take['presence']);duration=len(stereo)/RATE
+        filename=f'{name}-{index+1}.mp3';write_mp3(OUT/filename,stereo)
+        clips[name].append({'id':f'{name}-{index+1}','offset':round(offset,6),'duration':round(duration,6),'file':'/assets/audio/voice/'+filename,'delivery':take['name']})
+        pieces.extend([stereo,np.zeros((round(.14*RATE),2))]);offset+=duration+.14
+        report.append({'id':f'{name}-{index+1}','seconds':round(duration,4),'peak':round(float(np.max(np.abs(stereo))),4)})
+        print(name,index+1,round(duration,3),'seconds',flush=True)
+write_mp3(OUT.parent/'voice-calls.mp3',np.concatenate(pieces))
+(ROOT/'public/voice-clips.js').write_text('// Generated by scripts/make-voice-calls.py\nexport const VOICE_FILE="/assets/audio/voice-calls.mp3?v=1.6";\nexport const VOICE_CLIPS='+json.dumps(clips,separators=(',',':'))+';\n')
+(OUT.parent/'voice-production.json').write_text(json.dumps({'engine':'Kokoro-82M ONNX','model_origin':'https://huggingface.co/hexgrad/Kokoro-82M','count':35,'sample_rate':RATE,'clips':report},indent=2)+'\n')
+print('Finished 35 new neural calls and the audio sprite.',flush=True)
