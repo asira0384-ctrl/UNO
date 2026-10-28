@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRoom, createPlayer, startGame, playCard, drawCard, passTurn, callUno,
-  catchUno, publicState, currentPlayer, botMove, event, normalizeSettings, finishOnTime, BOT_LEVELS } from './src/game.js';
+  catchUno, publicState, currentPlayer, botMove, event, normalizeSettings, finishOnTime, settleDrawPenalty, BOT_LEVELS } from './src/game.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -68,6 +68,7 @@ export async function createGameServer(options = {}) {
     next();
   });
   app.get('/health', (req,res) => res.json({ ok: true }));
+  app.get('/sw.js', (req,res) => { res.setHeader('Cache-Control','no-cache'); res.sendFile(path.join(ROOT,'public/sw.js')); });
   app.use(express.static(path.join(ROOT, 'public'), { etag: true, maxAge: 0 }));
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
@@ -84,6 +85,7 @@ export async function createGameServer(options = {}) {
   });
 
   function publish(room) {
+    settleDrawPenalty(room);
     for (const p of room.players) {
       const socketId = members.get(p.id);
       if (socketId) io.to(socketId).emit('state', publicState(room, p.id));
@@ -145,9 +147,10 @@ export async function createGameServer(options = {}) {
     if (room.paused) {
       const pausedFor = Math.max(0,Date.now() - (room.pauseStartedAt || Date.now()));
       if (room.roundEndsAt) room.roundEndsAt += pausedFor;
+      if (room.drawDueAt) room.drawDueAt += pausedFor;
       if (room.dealUntil) {room.dealUntil += pausedFor;if(room.dealStartedAt)room.dealStartedAt += pausedFor;}
       room.paused = false; room.pauseStartedAt = null;
-      room.turnEndsAt = Math.max(Date.now(),room.dealUntil || 0) + room.settings.turnSeconds * 1000;
+      room.turnEndsAt = room.drawStack && room.drawDueAt ? room.drawDueAt : Math.max(Date.now(),room.dealUntil || 0) + room.settings.turnSeconds * 1000;
     }
     if (!room.players.some(x => x.id === room.hostId && !x.bot && x.connected)) room.hostId = p.id;
   }
@@ -266,6 +269,7 @@ export async function createGameServer(options = {}) {
       if (room.phase === 'playing') throw new Error('ゲームが終わったら戻れます');
       room.phase = 'lobby'; room.players.forEach(p => { p.hand = []; p.uno = false; p.unoArmed = false; });
       room.deck = []; room.discard = []; room.drawnCardId = null; room.pendingUno = null;
+      room.drawStack = 0; room.drawType = null; room.drawDueAt = 0;
       event(room, 'lobby', '次のゲームの準備をしよう'); publish(room);
     });
     for (const [name,action] of Object.entries({
@@ -297,6 +301,7 @@ export async function createGameServer(options = {}) {
         room.dealUntil = 0; event(room,'ready','配札完了！ ゲームスタート'); publish(room);
       }
       if (room.roundEndsAt && Date.now() >= room.roundEndsAt) { finishOnTime(room); publish(room); continue; }
+      if (settleDrawPenalty(room)) { publish(room); continue; }
       let changed = false;
       for (const p of room.players) {
         if (!p.bot && !p.connected && Date.now() - p.lastSeen > 30000) {

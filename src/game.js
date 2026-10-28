@@ -3,6 +3,7 @@ import { randomInt, randomUUID } from 'node:crypto';
 export const COLORS = ['red', 'yellow', 'green', 'blue'];
 export const COLOR_NAMES = { red: '赤', yellow: '黄', green: '緑', blue: '青' };
 export const CARD_NAMES = { skip: 'スキップ', reverse: 'リバース', draw2: '+2', wild: 'ワイルド', wild4: '+4' };
+export const AUTO_DRAW_DELAY = 4000;
 export const DEFAULT_SETTINGS = { stackDraw: false, turnSeconds: 30, startingCards: 7,
   maxPlayers: 4, roundMinutes: 5, mode: 'solo', sevenSwap: false, zeroSeven: false, forcePlay: false, botDifficulty: 'normal' };
 
@@ -50,7 +51,7 @@ export function createRoom(code, host, settings = {}) {
   return { code, hostId: host.id, phase: 'lobby', players: [host], settings: normalizeSettings(settings),
     createdAt: Date.now(), updatedAt: Date.now(), round: 0, revision: 0,
     deck: [], discard: [], currentIndex: 0, direction: 1, color: 'red',
-    drawnCardId: null, drawStack: 0, drawType: null, pendingUno: null, winnerId: null,
+    drawnCardId: null, drawStack: 0, drawType: null, drawDueAt: 0, pendingUno: null, winnerId: null,
     turnEndsAt: null, roundEndsAt: null, dealUntil: 0, draw: false, winnerTeam: null,
     paused: false, pauseStartedAt: null, events: [], rankings: [] };
 }
@@ -71,7 +72,7 @@ function advance(room, steps = 1) {
   room.currentIndex = nextIndex(room, steps);
   room.drawnCardId = null;
   currentPlayer(room).unoArmed = false;
-  room.turnEndsAt = Date.now() + room.settings.turnSeconds * 1000;
+  room.turnEndsAt = room.drawStack && room.drawDueAt ? room.drawDueAt : Date.now() + room.settings.turnSeconds * 1000;
 }
 
 export function take(room, count) {
@@ -115,6 +116,7 @@ export function startGame(room, dealDelay = 0) {
   room.phase = 'playing'; room.direction = 1;
   room.currentIndex = room.round % room.players.length;
   room.round++; room.turnNumber = 1; room.drawnCardId = null; room.drawStack = 0; room.drawType = null;
+  room.drawDueAt = 0;
   room.pendingUno = null; room.winnerId = null; room.winnerTeam = null; room.draw = false; room.rankings = []; room.paused = false;
   room.pauseStartedAt = null; room.dealStartedAt = Date.now(); room.dealUntil = dealDelay ? Date.now() + dealDelay : 0;
   const startsAt = Date.now() + dealDelay;
@@ -128,7 +130,6 @@ export function canPlay(room, player, card, ignoreDrawn = false) {
   if (!ignoreDrawn && room.drawnCardId && card.id !== room.drawnCardId) return false;
   if (room.drawStack) return room.settings.stackDraw && card.value === room.drawType;
   const top = room.discard.at(-1);
-  if (card.value === 'wild4') return !player.hand.some(c => c.color === room.color);
   return card.color === 'wild' || card.color === room.color || card.value === top?.value;
 }
 
@@ -150,6 +151,7 @@ function finish(room, winner, timed = false, tied = false) {
   room.roundEndsAt = null; room.dealUntil = 0; room.draw = tied;
   room.winnerTeam = !tied && room.settings.mode === 'teams' ? room.players.indexOf(winner) % 2 : null;
   room.pendingUno = null;
+  room.drawDueAt = 0;
   const winning = p => !tied && (room.winnerTeam === null ? p.id === winner.id : room.players.indexOf(p) % 2 === room.winnerTeam);
   const points = tied ? 0 : room.players.filter(p => !winning(p))
     .reduce((sum, p) => sum + p.hand.reduce((s, c) => s + cardPoints(c), 0), 0);
@@ -179,8 +181,6 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false, 
   if (index === -1) throw new Error('そのカードは手札にありません');
   const card = player.hand[index];
   if (!canPlay(room, player, card)) {
-    if (card.value === 'wild4' && player.hand.some(c => c.color === room.color) && !room.drawStack)
-      throw new Error('+4は、今の色のカードを持っていない時だけ出せます');
     throw new Error(room.drawnCardId ? '今引いたカードだけ出せます' : '同じ色・数字・記号のカードを出してね');
   }
   if (mustDeclareUno(room,player)) throw new Error('先にUNOボタンを押してね');
@@ -207,11 +207,14 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false, 
   else if (card.value === 'draw2' || card.value === 'wild4') {
     amount = (card.value === 'draw2' ? 2 : 4) + room.drawStack;
     targetId = room.players[nextIndex(room)].id;
-    if (room.settings.stackDraw && player.hand.length) {
+    const target = room.players[nextIndex(room)];
+    if (room.settings.stackDraw && player.hand.length && target.hand.some(c => c.value === card.value)) {
       room.drawStack = amount; room.drawType = card.value;
+      room.drawDueAt = Date.now() + AUTO_DRAW_DELAY;
     } else {
-      give(room, room.players[nextIndex(room)], amount);
+      give(room, target, amount);
       room.drawStack = 0; room.drawType = null;
+      room.drawDueAt = 0;
       steps = 2;
     }
   }
@@ -240,6 +243,21 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false, 
 
 export function mustDeclareUno(room,player) { return room.phase==='playing' && ((player?.hand.length===2 && !player.unoArmed)||(player?.hand.length===1 && !player.uno)); }
 
+// The server accepts draw penalties without requiring a tap on the draw pile.
+// A matching counter card gives the recipient a short optional response window.
+export function settleDrawPenalty(room, now = Date.now()) {
+  if (room.phase !== 'playing' || room.paused || room.dealUntil > now || !room.drawStack) return false;
+  const player = currentPlayer(room);
+  if (!player) return false;
+  const canCounter = room.settings.stackDraw && player.hand.some(c => c.value === room.drawType);
+  if (canCounter && room.drawDueAt > now) return false;
+  const cards = give(room, player, room.drawStack);
+  room.drawStack = 0; room.drawType = null; room.drawDueAt = 0; room.pendingUno = null;
+  event(room, 'draw', `${player.name} が${cards.length}枚を自動で受け取った`, { actorId: player.id, amount: cards.length, automatic: true });
+  advance(room);
+  return true;
+}
+
 export function drawCard(room, playerId, timedOut = false) {
   const player = assertTurn(room, playerId);
   if (room.drawnCardId) {
@@ -256,6 +274,7 @@ export function drawCard(room, playerId, timedOut = false) {
   const penalty = room.drawStack;
   const cards = give(room, player, penalty || 1);
   room.drawStack = 0; room.drawType = null;
+  room.drawDueAt = 0;
   const candidatePlayable = !penalty && cards[0] && canPlay(room, player, cards[0], true);
   const playable = !timedOut && candidatePlayable;
   if (playable) room.drawnCardId = cards[0].id;

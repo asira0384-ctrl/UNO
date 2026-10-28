@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createGameServer } from '../server.js';
+import {deck} from '../src/game.js';
 
 const request=(socket,name,data={})=>new Promise((resolve,reject)=>socket.timeout(3000).emit(name,data,(err,r)=>err?reject(err):resolve(r)));
 async function connect(url) {
@@ -77,4 +78,38 @@ test('a network client must call UNO; a forged declared flag cannot bypass it',a
   const id=p.hand[0].id,revision=r.revision;
   const blocked=await request(a,'game:play',{cardId:id,uno:true});assert.equal(blocked.ok,false);assert.match(blocked.error,/UNO/);assert.equal(p.hand.length,2);assert.equal(r.revision,revision);
   assert.equal((await request(a,'game:uno')).ok,true);assert.equal((await request(a,'game:play',{cardId:id})).ok,true);assert.equal(p.hand.length,1);assert.equal(p.uno,true);
+});
+
+test('a network +4 accepts a playable hand, selects red and delivers penalties without a draw request',async t=>{
+  const dataDir=await mkdtemp(path.join(tmpdir(),'uno-auto-draw-'));
+  const server=await createGameServer({dataDir,botDelay:100000,dealDelay:0}),clients=[];
+  t.after(async()=>{clients.forEach(c=>c.disconnect());await server.close();await rm(dataDir,{recursive:true,force:true});});
+  const address=await server.listen(0,'127.0.0.1'),url=`http://127.0.0.1:${address.port}`;
+  const a=await connect(url),b=await connect(url),c=await connect(url);clients.push(a,b,c);
+  const created=await request(a,'room:create',{name:'A'});await request(b,'room:join',{code:created.code,name:'B'});await request(c,'room:join',{code:created.code,name:'C'});await request(a,'game:start');
+  const r=server.rooms.get(created.code);
+  const prepare=stack=>{
+    const cards=deck(),pick=(color,value)=>cards.splice(cards.findIndex(c=>c.color===color&&c.value===value),1)[0];
+    r.discard=[pick('red','5')];r.players[0].hand=[pick('wild','wild4'),pick('red','8'),pick('blue','2')];
+    r.players[1].hand=[pick('green','1'),pick('yellow','2'),stack?pick('wild','wild4'):pick('blue','3')];
+    r.players[2].hand=[pick('red','2'),pick('blue','4'),pick('green','6')];r.deck=cards;
+    r.settings.stackDraw=stack;r.currentIndex=0;r.color='red';r.drawnCardId=null;r.drawStack=0;r.drawDueAt=0;
+    r.players.forEach(p=>{p.uno=false;p.unoArmed=false;});return r.players[0].hand[0].id;
+  };
+  assert.equal((await request(a,'game:play',{cardId:prepare(false),color:'red'})).ok,true);
+  await until(()=>b.view.hand.length===7&&c.view.currentId===r.players[2].id);
+  assert.equal(c.view.color,'red');assert.ok(c.view.playableIds.includes(r.players[2].hand[0].id));
+  assert.equal((await request(a,'game:play',{cardId:prepare(true),color:'red'})).ok,true);
+  await until(()=>b.view.drawStack===4);assert.equal(b.view.hand.length,3);
+  r.drawDueAt=Date.now()-1;
+  await until(()=>b.view.drawStack===0&&b.view.hand.length===7);assert.equal(c.view.currentId,r.players[2].id);assert.equal(b.view.events.at(-1).automatic,true);
+});
+
+test('install manifest, PNG icons and a revalidated root service worker are served with the app',async t=>{
+  const dataDir=await mkdtemp(path.join(tmpdir(),'uno-install-')),server=await createGameServer({dataDir});
+  t.after(async()=>{await server.close();await rm(dataDir,{recursive:true,force:true});});
+  const address=await server.listen(0,'127.0.0.1'),base=`http://127.0.0.1:${address.port}`;
+  const manifest=await (await fetch(base+'/manifest.webmanifest')).json();assert.equal(manifest.display,'standalone');assert.equal(manifest.scope,'/');assert.equal(manifest.prefer_related_applications,false);
+  for(const icon of manifest.icons){const response=await fetch(base+icon.src),bytes=Buffer.from(await response.arrayBuffer());assert.equal(response.status,200);assert.match(response.headers.get('content-type'),/image\/png/);const n=Number(icon.sizes.split('x')[0]);assert.equal(bytes.readUInt32BE(16),n);assert.equal(bytes.readUInt32BE(20),n);}
+  const worker=await fetch(base+'/sw.js');assert.equal(worker.headers.get('cache-control'),'no-cache');assert.match(await worker.text(),/addEventListener\('fetch'/);
 });

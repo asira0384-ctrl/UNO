@@ -1,1 +1,41 @@
-{"name": "UNO PARTY", "short_name": "UNO PARTY", "description": "友達と遊べるオンラインカードゲーム", "start_url": "/", "display": "standalone", "background_color": "#1769b6", "theme_color": "#1769b6", "icons": [{"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}]}
+{
+  "id": "/",
+  "name": "UNO PARTY",
+  "short_name": "UNO PARTY",
+  "description": "友達と遊べるオンラインカードゲーム",
+  "lang": "ja",
+  "start_url": "/?app=1",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "orientation": "any",
+  "background_color": "#1769b6",
+  "theme_color": "#1769b6",
+  "categories": [
+    "games"
+  ],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/assets/app/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/app/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/app/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

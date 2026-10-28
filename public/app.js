@@ -1,15 +1,18 @@
-import { PartyAudio } from './audio.js?v=1.4';
-import { TurnFeedback, turnStatus, eventVoices } from './feedback.js?v=1.4';
-import { fitHand, dealSequence } from './layout.js?v=1.4';
-import { cardMarkup as cardHTML } from './cards.js?v=1.4';
-import { CardInput,insideDropZone } from './interaction.js?v=1.4';
-import { THEMES,themeIndex } from './themes.js?v=1.4';
+import { PartyAudio } from './audio.js?v=1.5';
+import { TurnFeedback, turnStatus, eventVoices } from './feedback.js?v=1.5';
+import { fitHand, dealSequence } from './layout.js?v=1.5';
+import { cardMarkup as cardHTML } from './cards.js?v=1.5';
+import { CardInput,insideDropZone } from './interaction.js?v=1.5';
+import { THEMES,themeIndex } from './themes.js?v=1.5';
+import { AppInstall,installPlatform } from './install.js?v=1.5';
 
 const $ = (query,root=document) => root.querySelector(query);
 const app=$('#app'), modalRoot=$('#modal-root'), fxRoot=$('#fx-root');
 const sound=new PartyAudio();
 const feedback=new TurnFeedback();
 const cardInput=new CardInput();
+const installation=new AppInstall(updateInstallUI);
+installation.register();
 const ambienceStarted=Date.now();
 let ambience=-1,ignoreCardClickUntil=0,dragView=null,activePointer=null,finishUntil=0,finishKey=null,resultTimer=null;
 const DIFFICULTIES={easy:'かんたん',normal:'普通',hard:'強い'};
@@ -91,7 +94,18 @@ function renderHeader() {
 }
 
 function homeHTML() {
-  return `<section class="home-screen"><div class="home-intro"><span class="lobby-eyebrow">PLAY TOGETHER, ANYWHERE.</span><h1>さあ、もう一勝負。</h1><p>いつもの友達と。ちょっと空いた時間に。</p></div><div class="mode-cards"><button class="mode-card classic-mode" data-action="classic" aria-label="クラシック CPUと練習"><span class="mode-pill">CPUと練習</span><span class="mode-illustration card-illustration">${cardHTML({color:'blue',value:'reverse'})}${cardHTML({color:'red',value:'7'})}${cardHTML({color:'wild',value:'wild4'})}</span><strong>クラシック</strong><small>ひとりで気軽にプレイ</small><span class="mode-go">PLAY ${icon('arrow')}</span></button><button class="mode-card friends-mode" data-action="friends" aria-label="友達と遊ぶ"><span class="mode-pill">ONLINE · 2〜4人</span><span class="mode-illustration">${houseArt('create')}</span><strong>友達と遊ぶ</strong><small>ルームをつくって、みんなで集合</small><span class="mode-go">LET'S PARTY ${icon('arrow')}</span></button></div><div class="home-bottom"><button class="lobby-utility" data-action="help"><span>${icon('book')}</span>遊び方</button><button class="start-audio-button" data-action="enable-audio">${icon('sound')}<span data-audio-home>音ありで遊ぶ</span></button><button class="lobby-utility" data-action="audio"><span>${icon('settings')}</span>設定</button></div><span class="fan-note">UNO風オンラインカードゲーム · ダウンロード不要</span></section>`;
+  return `<section class="home-screen"><div class="home-intro"><span class="lobby-eyebrow">PLAY TOGETHER, ANYWHERE.</span><h1>さあ、もう一勝負。</h1><p>いつもの友達と。ちょっと空いた時間に。</p></div><div class="mode-cards"><button class="mode-card classic-mode" data-action="classic" aria-label="クラシック CPUと練習"><span class="mode-pill">CPUと練習</span><span class="mode-illustration card-illustration">${cardHTML({color:'blue',value:'reverse'})}${cardHTML({color:'red',value:'7'})}${cardHTML({color:'wild',value:'wild4'})}</span><strong>クラシック</strong><small>ひとりで気軽にプレイ</small><span class="mode-go">PLAY ${icon('arrow')}</span></button><button class="mode-card friends-mode" data-action="friends" aria-label="友達と遊ぶ"><span class="mode-pill">ONLINE · 2〜4人</span><span class="mode-illustration">${houseArt('create')}</span><strong>友達と遊ぶ</strong><small>ルームをつくって、みんなで集合</small><span class="mode-go">LET'S PARTY ${icon('arrow')}</span></button></div><div class="home-bottom"><button class="lobby-utility" data-action="help"><span>${icon('book')}</span>遊び方</button><button class="start-audio-button" data-action="enable-audio">${icon('sound')}<span data-audio-home>音ありで遊ぶ</span></button><button class="lobby-utility" data-action="audio"><span>${icon('settings')}</span>設定</button></div>${!installation.installed?`<button class="install-link" data-action="install">${icon('down')}ホーム画面に追加</button>`:''}<span class="fan-note">UNO風オンラインカードゲーム · 2〜4人でオンライン</span></section>`;
+}
+
+function updateInstallUI() {
+  const link=$('.install-link');if(link)link.hidden=installation.installed;
+  if(dialogType==='install')openDialog('install');
+}
+function installHTML() {
+  if(installation.installed)return `${dialogHead('ホーム画面のアプリ')}<div class="install-heading"><img src="/assets/app/icon-192.png" alt=""><div><strong>UNO PARTY</strong><span>アプリとして開いています</span></div></div><p class="dialog-description">次回もホーム画面のアイコンから起動できるよ。対戦にはインターネット接続が必要です。</p><button class="game-button green" data-action="close">ゲームへ戻る</button>`;
+  const platform=installPlatform();
+  const steps=platform==='ios'?['Safariでこのゲームの公開URLを開く','共有メニューから「ホーム画面に追加」を選ぶ','「Webアプリとして開く」をONにして「追加」']:platform==='android'?['Chromeでこのゲームの公開URLを開く','メニューから「アプリをインストール」または「ホーム画面に追加」','追加したアイコンからUNO PARTYを起動']:['このゲームをChromeやEdgeで開く','アドレスバーのインストールボタン、またはブラウザメニューから追加','追加したUNO PARTYを起動'];
+  return `${dialogHead('ホーム画面に追加')}<div class="install-heading"><img src="/assets/app/icon-192.png" alt=""><div><strong>UNO PARTY</strong><span>ストア登録なしでアプリに</span></div></div>${installation.canPrompt?'<button class="game-button gold" data-action="install-now">アプリを追加する</button><p class="install-or">メニューからも追加できます</p>':''}<ol class="install-steps">${steps.map(step=>`<li>${step}</li>`).join('')}</ol><p class="install-note">対戦にはインターネット接続が必要です。<br>同じ公開URLのアイコンから使ってね。</p><button class="small-game-button" data-action="copy-app-url">ゲームのURLをコピー</button>`;
 }
 
 function friendsHTML() {
@@ -99,7 +113,7 @@ function friendsHTML() {
 }
 
 function ruleGrid(settings,disabled=false) {
-  const rules=[['sevenSwap','7枚交換','7を出して相手と手札を交換','7 ⇄'],['zeroSeven','0–7ルール','0で全員移動・7で手札交換','0 ⇄ 7'],['stackDraw','スタッキング','同じ+2同士・+4同士を重ねる','+2 +4'],['forcePlay','強制プレイ','引いたカードが出せたら必ず出す',icon('arrow')]];
+  const rules=[['sevenSwap','7枚交換','7を出して相手と手札を交換','7 ⇄'],['zeroSeven','0–7ルール','0で全員移動・7で手札交換','0 ⇄ 7'],['stackDraw','スタッキング','同じカードで4秒以内に重ね返す','+2 +4'],['forcePlay','強制プレイ','引いたカードが出せたら必ず出す',icon('arrow')]];
   return `<div class="rule-tiles">${rules.map(([key,label,description,symbol])=>`<button class="rule-tile ${settings[key]?'selected':''}" data-action="toggle-rule" data-rule="${key}" role="switch" aria-checked="${!!settings[key]}" aria-label="${label}" title="${description}" ${disabled?'disabled':''}><span class="rule-art rule-${key}">${symbol}</span><strong>${label}</strong><small>${description}</small><span class="rule-check">${settings[key]?'✓':'+'}</span></button>`).join('')}</div>`;
 }
 
@@ -143,14 +157,14 @@ function gameHTML() {
   const myIndex=state.players.findIndex(p=>p.id===state.selfId);
   const others=state.players.map((p,i)=>({p,relative:(i-myIndex+state.players.length)%state.players.length})).filter(x=>x.p.id!==state.selfId).sort((a,b)=>a.relative-b.relative);
   const positions=others.length===1?['top']:others.length===2?['top-left','top-right']:['left','top','right'];
-  const hint=dealing?'カードを配っています…':state.phase==='finished'?'ナイスゲーム！':!connected?'再接続しています…':state.paused?'対戦相手を待っています…':mine?(state.drawStack?`+${state.drawStack}！ 引くか、同じドローを重ねよう`:state.drawnCardId?(state.settings.forcePlay?'引いたカードを出してね':'引いたカードを出す？ パスもできるよ'):state.mustCallUno?'先にUNOボタンを押してね':playable.size?'選択 → 中央へドラッグ / ダブルタップ':'山札をタップして1枚引こう'):`${current?.name||''} の番`;
+  const hint=dealing?'カードを配っています…':state.phase==='finished'?'ナイスゲーム！':!connected?'再接続しています…':state.paused?'対戦相手を待っています…':mine?(state.drawStack?`+${state.drawStack}は自動受取 · 同じカードなら重ね返せる`:state.drawnCardId?(state.settings.forcePlay?'引いたカードを出してね':'引いたカードを出す？ パスもできるよ'):state.mustCallUno?'先にUNOボタンを押してね':playable.size?'選択 → 中央へドラッグ / ダブルタップ':'山札をタップして1枚引こう'):`${current?.name||''} の番`;
   return `<section style="--hand-height:${layout.height}px" class="game-screen players-${state.players.length} ${dealing?'dealing':''} ${hand.length>20?'hand-crowded':''} ${mine?'my-turn':''}"><div class="table-scene"></div><div class="game-topbar"><button class="table-back" data-action="leave" aria-label="ルームを退出">${icon('back')}</button><span class="match-clock" aria-label="試合の残り時間">${icon('clock')}<small>試合</small><b data-match-clock>--:--</b></span><span class="round-chip">ROUND ${state.round}${state.settings.mode==='teams'?' · 2 vs 2':''}</span><div class="game-tools"><button class="table-icon" data-action="log" aria-label="ゲームの履歴">${icon('log')}</button><button class="table-icon" data-action="audio" aria-label="サウンド設定">${icon('sound')}</button><button class="table-icon" data-action="table-settings" aria-label="ゲーム設定">${icon('settings')}</button></div></div>
   ${others.map((x,i)=>opponentHTML(x.p,positions[i])).join('')}
   <button class="draw-deck" data-action="draw" ${!mine||!!state.drawnCardId||!connected||dealing?'disabled':''} aria-label="${state.drawStack?`${state.drawStack}枚引く`:'山札から1枚引く'}">${cardHTML({back:true})}${mine&&!state.drawnCardId&&!dealing?`<span class="deck-arrow">${icon('down')}</span>`:''}<span class="deck-caption">${state.drawStack?`+${state.drawStack}`:'DRAW'}</span></button>
   <div class="center-play-area" style="--table-color:${SWATCHES[state.color]}"><div class="direction-orbit ${state.direction===-1?'reverse':''}" aria-label="${state.direction===1?'時計回り':'反時計回り'}"><svg viewBox="0 0 280 280" fill="none"><g stroke="currentColor" stroke-width="9" stroke-linecap="round"><path d="M47 112a98 98 0 0 1 169-37"/><path d="m196 43 24 34-38 5" stroke-linejoin="round"/><path d="M233 168A98 98 0 0 1 64 205"/><path d="m84 237-24-34 38-5" stroke-linejoin="round"/></g></svg></div><div class="discard-slot" aria-label="場のカード ${COLOR_NAMES[state.color]} ${esc(CARD_NAMES[state.top?.value]||state.top?.value)}">${cardHTML(state.top,'',state.top?.color==='wild'?state.color:null)}</div><span class="current-color" style="--swatch:${SWATCHES[state.color]}">${SHAPES[state.color]} ${COLOR_NAMES[state.color]}</span>${state.drawStack?`<span class="stack-warning">+${state.drawStack} STACK!</span>`:''}</div>
   <div class="self-player ${mine?'active':''}" data-self-player><button class="avatar-wrap" data-action="profile" aria-label="アイコンを変更">${avatar(me)}${mine?'<span class="turn-counter" data-turn-counter></span>':''}</button><strong class="player-name">${esc(me?.name)}</strong><span class="player-status">${me?.team!==null?`TEAM ${me.team+1}`:'YOU'} · ${hand.length}枚</span><button class="reaction-button" data-action="emojis" aria-label="リアクション">${icon('chat')}</button>${me?.uno?'<span class="uno-bubble">UNO!</span>':''}</div>
   <div class="my-zone"><div class="turn-panel ${mine?'is-mine':''}" data-turn-panel><strong data-turn-title role="status" aria-live="polite">${esc(turn.title)}</strong><span data-turn-remaining><b data-turn-seconds>${turn.seconds}</b>秒</span><span class="turn-progress"><i></i></span></div><div class="hand-message ${mine?'mine':''}">${esc(hint)}</div><div class="hand-scroll"><div class="hand-rack" style="width:${layout.width}px;height:${layout.height}px;--card-w:${layout.cardWidth}px;--card-h:${layout.cardHeight}px">${hand.map((c,i)=>`<button class="hand-card ${playable.has(c.id)&&mine?'playable':'unplayable'} ${state.drawnCardId===c.id?'drawn':''} ${cardInput.selected===c.id?'is-selected':''}" aria-pressed="${cardInput.selected===c.id}" style="--i:${i+1};left:${layout.placements[i].x}px;top:${layout.placements[i].y}px;--fan:${layout.placements[i].angle}deg" data-action="play" data-card="${c.id}" data-deal-index="${i}" ${dealing?'data-dealt="false"':''} aria-label="${COLOR_NAMES[c.color]||''}${CARD_NAMES[c.value]||c.value} ${playable.has(c.id)&&mine?'出せます':'今は出せません'}" aria-disabled="${!playable.has(c.id)||!mine}" ${!mine||dealing?'disabled':''}>${cardHTML(c)}</button>`).join('')}</div></div><div class="hand-footer"><button class="sort-button" data-action="sort" aria-label="手札の色順並び替え" aria-pressed="${sortCards}">${icon('sort')}</button><span>${hand.length}枚${state.settings.zeroSeven?' · 0–7':state.settings.sevenSwap?' · 7枚交換':''}</span>${mine&&state.drawnCardId&&!state.settings.forcePlay?'<button class="pass-button" data-action="pass">パス</button>':''}</div></div>
-  <div class="uno-controls"><button class="uno-button ${state.unoArmed||me?.uno?'armed':''} ${hand.length===2&&mine&&!state.unoArmed?'ready':''}" data-action="uno" ${!connected||state.phase!=='playing'||dealing||hand.length>2||hand.length===0||state.unoArmed||me?.uno||(hand.length===2&&!mine)?'disabled':''} aria-label="UNOを宣言" aria-pressed="${state.unoArmed||me?.uno||false}"><small>コール</small><strong>UNO!</strong></button><span>${state.unoArmed||me?.uno?'宣言済み！':'残り1枚の前に！'}</span></div>
+  <div class="uno-controls"><button class="uno-button ${state.unoArmed||me?.uno?'armed':''} ${hand.length===2&&mine&&!state.unoArmed?'ready':''}" data-action="uno" ${!connected||state.phase!=='playing'||dealing||hand.length>2||hand.length===0||state.unoArmed||me?.uno||(hand.length===2&&!mine)?'disabled':''} aria-label="UNOを宣言" aria-pressed="${state.unoArmed||me?.uno||false}"><img class="uno-button-art" src="/assets/uno-call.svg" alt="" draggable="false"><span class="uno-mark">${icon('check')}</span></button><span>${state.unoArmed||me?.uno?'宣言済み！':'残り1枚の前に！'}</span></div>
   ${state.pendingUnoId&&state.pendingUnoId!==state.selfId?'<button class="catch-button" data-action="catch">UNO忘れ！<br><strong>指摘する +2</strong></button>':''}
   ${reactionOpen?`<div class="reaction-tray">${REACTIONS.map(([e,label])=>`<button data-action="reaction" data-emoji="${e}" aria-label="${label}">${label}</button>`).join('')}</div>`:''}
   <span class="latest-event">${esc(state.events.at(-1)?.text||'')}</span><button class="rotate-screen-button" data-action="fullscreen" aria-label="全画面表示">${icon('fullscreen')}<span>横向きでも遊べるよ</span></button>
@@ -183,6 +197,7 @@ function dialogHead(title,close=true) {
   return `<div class="dialog-head"><h2>${title}</h2>${close?'<button class="dialog-close" data-action="close" aria-label="閉じる">×</button>':''}</div>`;
 }
 function dialogHTML(type) {
+  if(type==='install')return installHTML();
   if(type==='profile')return `${dialogHead('プレイヤー設定')}<div class="profile-preview">${avatar(profile)}</div><label class="field-label" for="player-name">プレイヤー名</label><input class="text-input" id="player-name" autocomplete="nickname" maxlength="16" value="${esc(profile.name)}"><label class="photo-picker" for="avatar-file">${icon('image')}写真・画像を選ぶ</label><input class="avatar-file" type="file" id="avatar-file" accept="image/*"><div class="avatar-picker" role="group" aria-label="アイコンを選択">${AVATARS.map((a,i)=>`<button class="avatar-option ${!profile.image&&profile.avatar===i?'selected':''}" data-action="avatar" data-avatar="${i}" aria-label="アイコン ${i+1}" aria-pressed="${!profile.image&&profile.avatar===i}"><img src="${a}" alt=""></button>`).join('')}</div><button class="game-button gold" data-action="save-profile">保存 ${icon('check')}</button>`;
   if(type==='audio')return `${dialogHead('サウンド設定')}<div class="audio-status"><span class="audio-status-dot"></span><span data-audio-status>音を開始してね</span></div><div class="audio-start-buttons"><button class="game-button gold compact" data-action="enable-audio">${icon('sound')}音を開始</button><button class="small-game-button" data-action="test-audio">♪ 音をテスト</button></div><div class="sound-row"><span>BGM<small>パーティーを盛り上げる音楽</small></span><button class="switch ${sound.settings.music?'on':''}" role="switch" aria-checked="${sound.settings.music}" data-action="music" aria-label="BGMを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.musicVolume}" data-volume="musicVolume" aria-label="BGM音量"><span data-volume-label="musicVolume">${sound.settings.musicVolume}%</span></div><div class="sound-row"><span>効果音<small>カード・ドロー・UNO・勝利</small></span><button class="switch ${sound.settings.effects?'on':''}" role="switch" aria-checked="${sound.settings.effects}" data-action="effects" aria-label="効果音を切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.effectsVolume}" data-volume="effectsVolume" aria-label="効果音の音量"><span data-volume-label="effectsVolume">${sound.settings.effectsVolume}%</span></div><div class="sound-row"><span>ボイス<small>専用に調整した短いゲームコール</small></span><button class="switch ${sound.settings.voices?'on':''}" role="switch" aria-checked="${sound.settings.voices}" data-action="voices" aria-label="ボイスを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.voiceVolume}" data-volume="voiceVolume" aria-label="ボイス音量"><span data-volume-label="voiceVolume">${sound.settings.voiceVolume}%</span></div><button class="small-game-button voice-test-button" data-action="test-voice">${icon('arrow')} ボイスをテスト</button><div class="sound-row"><span>残り時間の警告<small>自分の手番と試合終了の、最後の3秒だけ</small></span><button class="switch ${sound.settings.alerts?'on':''}" role="switch" aria-checked="${sound.settings.alerts}" data-action="alerts" aria-label="警告音を切り替え"></button></div><p class="audio-engine-status" data-audio-engine></p><p class="audio-footnote">スマホで聞こえない時は「音を開始」をタップ。<br>iPhoneのBGM音量は、端末側の音量ボタンでも調節してね。</p><a class="asset-credits" href="/credits.html" target="_blank" rel="noopener">音源・素材のクレジット</a>`;
   if(type==='create-room'||type==='room-settings') {
@@ -191,10 +206,10 @@ function dialogHTML(type) {
   }
   if(type==='wild')return `${dialogHead('次は、何色？')}<div class="color-wheel">${COLORS.map(c=>`<button class="color-choice ${c}" style="--swatch:${SWATCHES[c]}" data-action="color" data-color="${c}" aria-label="${COLOR_NAMES[c]}を選ぶ"><span>${SHAPES[c]}</span><strong>${COLOR_NAMES[c]}</strong></button>`).join('')}<span class="wheel-center">COLOR</span></div><p class="color-prompt">好きな色をタップ</p>`;
   if(type==='swap')return `${dialogHead('誰と交換する？')}<p class="dialog-description">7のカードで、相手の手札とまるごと交換！</p><div class="swap-players">${state.players.filter(p=>p.id!==state.selfId).map(p=>`<button data-action="swap-target" data-player="${p.id}">${avatar(p)}<strong>${esc(p.name)}</strong><span>手札 ${p.count}枚</span></button>`).join('')}</div>`;
-  if(type==='help')return `${dialogHead('遊び方')}<div class="rule-list">${[['色か数字を合わせて出す','場と同じ色・数字・記号を選択。中央へドラッグするかダブルタップで出そう。先に全部出したら勝ち！'],['出せなければ山札をタップ','1枚引いて、出せる場合はそのカードを出せるよ。「強制プレイ」がOFFならパスもOK。'],['手札2枚になったらUNO!','自分の番にUNOボタンを押してから出そう。押すまで残り1枚になるカードは出せないよ。'],['アクションで大逆転','スキップ・リバース・+2・ワイルド・+4で流れを変えよう。+4は今の色を持っていない時だけ。']].map((r,i)=>`<div class="rule-item"><span class="rule-num">${i+1}</span><div><strong>${r[0]}</strong><p>${r[1]}</p></div></div>`).join('')}</div><div class="special-rules"><strong>追加ルール</strong><p>7枚交換：7で選んだ相手と手札交換。<br>0–7：0で全員の手札が次の人へ、7で相手と交換。<br>スタッキング：同じ+2同士・+4同士を重ねられる。<br>2vs2：向かいの席が味方。どちらかが上がるとチームの勝ち。<br>時間切れ：残りカードの合計点が少ない人・チームが勝ち。数字はその数字、記号は20点、ワイルドは50点。</p></div><p class="dialog-description">UNOはカードを出す前に必須。<br>通信が30秒切れるとCPUが代行。戻ったら自分で操作できるよ。</p><button class="game-button green" data-action="close">わかった！ ${icon('check')}</button>`;
+  if(type==='help')return `${dialogHead('遊び方')}<div class="rule-list">${[['色か数字を合わせて出す','場と同じ色・数字・記号を選択。中央へドラッグするかダブルタップで出そう。先に全部出したら勝ち！'],['出せなければ山札をタップ','1枚引いて、出せる場合はそのカードを出せるよ。「強制プレイ」がOFFならパスもOK。'],['手札2枚になったらUNO!','自分の番にUNOボタンを押してから出そう。押すまで残り1枚になるカードは出せないよ。'],['アクションで大逆転','スキップ・リバース・+2・ワイルド・+4で流れを変えよう。+4は、出せるカードが手札にあっても使えるよ。色を指定すると、その色のカードを出せるようになる。']].map((r,i)=>`<div class="rule-item"><span class="rule-num">${i+1}</span><div><strong>${r[0]}</strong><p>${r[1]}</p></div></div>`).join('')}</div><div class="special-rules"><strong>追加ルール</strong><p>7枚交換：7で選んだ相手と手札交換。<br>0–7：0で全員の手札が次の人へ、7で相手と交換。<br>+2・+4：自動で受け取って1回休み。<br>スタッキング：同じ+2同士・+4同士で4秒以内に重ね返せる。返さなければ自動で受け取る。<br>2vs2：向かいの席が味方。どちらかが上がるとチームの勝ち。<br>時間切れ：残りカードの合計点が少ない人・チームが勝ち。数字はその数字、記号は20点、ワイルドは50点。</p></div><p class="dialog-description">UNOはカードを出す前に必須。<br>通信が30秒切れるとCPUが代行。戻ったら自分で操作できるよ。</p><button class="game-button green" data-action="close">わかった！ ${icon('check')}</button>`;
   if(type==='leave')return `${dialogHead('ルームを退出する？')}<p class="dialog-description">${state?.phase==='playing'?'対戦が続く場合は、あなたの代わりにCPUがプレイします。':'また遊ぶ時は、新しいルームを作るか参加してね。'}</p><div class="dialog-buttons"><button class="game-button gold" data-action="confirm-leave">退出する</button><button class="small-game-button" data-action="close">もう少し遊ぶ</button></div>`;
   if(type==='log')return `${dialogHead('ゲームの履歴')}<div class="event-log">${[...(state?.events||[])].reverse().map(e=>`<div class="log-entry"><span class="log-time">${new Date(e.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span><span>${esc(e.text)}</span></div>`).join('')}</div>`;
-  if(type==='game-settings')return `${dialogHead('ゲーム設定')}<div class="game-setting-summary"><span>ROOM <b>${state.code}</b></span><span>${state.settings.mode==='teams'?'2 vs 2':'個人戦'} · ${state.settings.roundMinutes?`${state.settings.roundMinutes}分`:'時間無制限'}</span><span>CPU：${DIFFICULTIES[state.settings.botDifficulty]||'普通'}</span><span>スタッキング ${state.settings.stackDraw?'ON':'OFF'}</span></div><div class="dialog-buttons"><button class="game-button blue" data-action="audio">${icon('sound')}サウンド設定</button><button class="small-game-button" data-action="help">遊び方・ルール</button><button class="small-game-button" data-action="fullscreen">${icon('fullscreen')}全画面表示</button><button class="quiet-button" data-action="leave">ルームを退出する</button></div>`;
+  if(type==='game-settings')return `${dialogHead('ゲーム設定')}<div class="game-setting-summary"><span>ROOM <b>${state.code}</b></span><span>${state.settings.mode==='teams'?'2 vs 2':'個人戦'} · ${state.settings.roundMinutes?`${state.settings.roundMinutes}分`:'時間無制限'}</span><span>CPU：${DIFFICULTIES[state.settings.botDifficulty]||'普通'}</span><span>スタッキング ${state.settings.stackDraw?'ON':'OFF'}</span></div><div class="dialog-buttons"><button class="game-button blue" data-action="audio">${icon('sound')}サウンド設定</button><button class="small-game-button" data-action="help">遊び方・ルール</button><button class="small-game-button" data-action="install">ホーム画面に追加</button><button class="small-game-button" data-action="fullscreen">${icon('fullscreen')}全画面表示</button><button class="quiet-button" data-action="leave">ルームを退出する</button></div>`;
   if(type==='result') {
     const winner=state.players.find(p=>p.id===state.winnerId),me=state.players.find(p=>p.id===state.selfId);
     const won=state.rankings.find(p=>p.id===state.selfId)?.won,host=state.hostId===state.selfId;
@@ -207,7 +222,7 @@ function dialogHTML(type) {
 
 function openDialog(type) {
   closeDialog(false);dialogType=type;
-  const d=document.createElement('dialog');d.className=`dialog-${type}`;d.innerHTML=dialogHTML(type);d.setAttribute('aria-label',({audio:'サウンド設定',profile:'プレイヤー設定',help:'遊び方',wild:'色を選ぶ',swap:'手札を交換する相手',leave:'退出の確認',log:'ゲームの履歴',result:'対戦結果','create-room':'部屋を作成','room-settings':'ルーム設定','game-settings':'ゲーム設定'})[type]);
+  const d=document.createElement('dialog');d.className=`dialog-${type}`;d.innerHTML=dialogHTML(type);d.setAttribute('aria-label',({install:'ホーム画面に追加',audio:'サウンド設定',profile:'プレイヤー設定',help:'遊び方',wild:'色を選ぶ',swap:'手札を交換する相手',leave:'退出の確認',log:'ゲームの履歴',result:'対戦結果','create-room':'部屋を作成','room-settings':'ルーム設定','game-settings':'ゲーム設定'})[type]);
   modalRoot.append(d);d.addEventListener('cancel',()=>{dialogType=null;wildCardId=null;});
   d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});
   d.showModal();updateAudioStatus();
@@ -331,7 +346,7 @@ function animateDraw(playerId,amount,delay=0) {
   const deck=$('.draw-deck')?.getBoundingClientRect();
   const target=playerId===state?.selfId?$('.hand-scroll'):$(`[data-player-id="${playerId}"] .avatar-wrap`);
   const end=target?.getBoundingClientRect();if(!deck||!end)return;
-  for(let i=0;i<Math.min(3,amount);i++)setTimeout(()=>{
+  for(let i=0;i<Math.min(8,amount);i++)setTimeout(()=>{
     const n=document.createElement('div');n.className='flying-card';n.innerHTML=cardHTML({back:true});
     n.style.setProperty('--card-w','48px');n.style.setProperty('--card-h','72px');
     n.style.transform=`translate(${deck.left}px,${deck.top}px) rotate(-13deg) scale(.7)`;fxRoot.append(n);
@@ -364,8 +379,6 @@ async function play(cardId,color,targetId) {
   if(!state||state.phase!=='playing')return;
   if(state.currentId!==state.selfId)throw new Error('あなたの番を待ってね');
   if(!state.playableIds.includes(cardId)) {
-    const card=state.hand.find(c=>c.id===cardId);
-    if(card?.value==='wild4'&&!state.drawStack)throw new Error('+4は、今の色のカードがない時だけ使えるよ');
     throw new Error(state.drawnCardId?'今引いたカードを出すか、パスしてね':'同じ色・数字・記号のカードを選んでね');
   }
   if(state.mustCallUno){$('.uno-button')?.classList.add('uno-required');setTimeout(()=>$('.uno-button')?.classList.remove('uno-required'),900);throw new Error('先にUNOボタンを押してね');}
@@ -392,7 +405,7 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.setting){draft[e.target.dataset.setting]=e.target.dataset.setting==='botDifficulty'?e.target.value:Number(e.target.value);if(draft.mode==='teams')draft.maxPlayers=4;const badge=$('.ready-badge');if(badge)badge.textContent=`${draft.maxPlayers-1}人のCPU · ${DIFFICULTIES[draft.botDifficulty]||'普通'}`;}
 });
 document.addEventListener('submit',e=>{if(e.target.dataset.form==='join'){e.preventDefault();perform(join);}});
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
   const button=e.target.closest('[data-action]');if(!button||button.disabled)return;
   const action=button.dataset.action;
   if(action==='play'){if(Date.now()>=ignoreCardClickUntil)selectCard(button.dataset.card);return;}
@@ -427,6 +440,13 @@ document.addEventListener('click',e=>{
     sound.unlock({gesture:true});updateAudioStatus();
     if(dialogType==='audio')openDialog('audio');toast('音声を開始します。端末の音量も上げてね');return;
   }
+  if(action==='install'){openDialog('install');return;}
+  if(action==='install-now'){
+    try{const accepted=await installation.prompt();if(accepted)toast('追加の案内を確認してね');}
+    catch{toast('ブラウザのメニューからホーム画面に追加してね');}
+    if(dialogType==='install')openDialog('install');return;
+  }
+  if(action==='copy-app-url'){await copyText(location.origin+'/', 'ゲームのURLをコピーしたよ');return;}
   if(action==='test-voice'){
     sound.unlock({gesture:true});sound.set('voices',true);if(!sound.settings.voiceVolume)sound.set('voiceVolume',85);
     sound.cancelVoices();sound.announce('red');sound.announce('blue');sound.announce('uno');toast('ゲーム用ボイスをテストします');return;

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { deck, createPlayer, createRoom, startGame, playCard, drawCard, passTurn, callUno,
-  catchUno, canPlay, currentPlayer, publicState, botMove, take } from '../src/game.js';
+  catchUno, canPlay, currentPlayer, publicState, botMove, take, settleDrawPenalty, AUTO_DRAW_DELAY } from '../src/game.js';
 
 const card=(color,value)=>({id:randomUUID(),color,value});
 function scenario(count=3,settings={}) {
@@ -50,12 +50,16 @@ test('reverse changes direction in a four-player match',()=>{
   const {r,p}=scenario(4);const c=card('red','reverse');p[0].hand.push(c);
   playCard(r,p[0].id,c.id);assert.equal(currentPlayer(r).id,p[3].id);
 });
-test('wild requires a valid selected color; +4 rejects holding current color',()=>{
+test('+4 is legal with other playable cards and sets the next playable color',()=>{
   const {r,p}=scenario();const c=card('wild','wild4');p[0].hand.push(c,card('red','8'));
-  assert.equal(canPlay(r,p[0],c),false);assert.throws(()=>playCard(r,p[0].id,c.id,'blue'),/今の色/);
-  p[0].hand=p[0].hand.filter(x=>x.color!=='red');assert.equal(canPlay(r,p[0],c),true);
+  assert.equal(canPlay(r,p[0],c),true);
+  const before=JSON.stringify(r);
   assert.throws(()=>playCard(r,p[0].id,c.id,'purple'),/色/);
+  assert.equal(JSON.stringify(r),before);
   playCard(r,p[0].id,c.id,'green');assert.equal(r.color,'green');assert.equal(p[1].hand.length,7);
+  assert.equal(currentPlayer(r).id,p[2].id);
+  assert.equal(canPlay(r,p[2],p[2].hand.find(c=>c.color==='green')),true);
+  assert.equal(canPlay(r,p[2],p[2].hand.find(c=>c.color==='blue')),false);
 });
 test('drawn playable card can be played, other existing cards cannot',()=>{
   const {r,p}=scenario();const original=card('red','8');p[0].hand.push(original);const drawn=card('red','2');r.deck.push(drawn);
@@ -83,11 +87,30 @@ test('legacy undeclared one-card saves must declare before winning',()=>{
   const {r,p}=scenario();p[0].hand=[card('red','2')];assert.throws(()=>playCard(r,p[0].id,p[0].hand[0].id),/UNO/);
   callUno(r,p[0].id);playCard(r,p[0].id,p[0].hand[0].id);assert.equal(r.phase,'finished');
 });
-test('draw stacking allows only the same type and the recipient may take the total',()=>{
+test('stacking allows only the same type and automatically gives the total to a player with no counter',()=>{
   const {r,p}=scenario(3,{stackDraw:true});p[0].hand.push(card('red','draw2'));p[1].hand.push(card('blue','draw2'),card('wild','wild4'));
   playCard(r,p[0].id,p[0].hand.at(-1).id);assert.equal(r.drawStack,2);assert.equal(p[1].hand.length,5);
   assert.equal(canPlay(r,p[1],p[1].hand.at(-1)),false);playCard(r,p[1].id,p[1].hand.at(-2).id);
-  assert.equal(r.drawStack,4);const count=p[2].hand.length;drawCard(r,p[2].id);assert.equal(p[2].hand.length,count+4);assert.equal(r.drawStack,0);assert.equal(currentPlayer(r).id,p[0].id);
+  assert.equal(p[2].hand.length,7);assert.equal(r.drawStack,0);assert.equal(currentPlayer(r).id,p[0].id);
+});
+test('a possible counter has four seconds, then the penalty arrives once without a draw command',()=>{
+  const {r,p}=scenario(3,{stackDraw:true});p[0].hand.push(card('wild','wild4'));p[1].hand.push(card('wild','wild4'));
+  playCard(r,p[0].id,p[0].hand.at(-1).id,'red');const count=p[1].hand.length,due=r.drawDueAt;
+  assert.ok(due>Date.now());assert.ok(due<=Date.now()+AUTO_DRAW_DELAY);assert.equal(r.turnEndsAt,due);
+  assert.equal(settleDrawPenalty(r,due-1),false);assert.equal(p[1].hand.length,count);
+  assert.equal(settleDrawPenalty(r,due),true);assert.equal(p[1].hand.length,count+4);assert.equal(currentPlayer(r).id,p[2].id);
+  assert.equal(settleDrawPenalty(r,due+1),false);assert.equal(p[1].hand.length,count+4);assert.equal(r.drawDueAt,0);
+  assert.equal(r.events.at(-1).automatic,true);
+});
+test('a counter can be played before the deadline and its recipient receives the accumulated penalty',()=>{
+  const {r,p}=scenario(3,{stackDraw:true});p[0].hand.push(card('wild','wild4'));p[1].hand.push(card('wild','wild4'));
+  playCard(r,p[0].id,p[0].hand.at(-1).id,'blue');playCard(r,p[1].id,p[1].hand.at(-1).id,'red');
+  assert.equal(p[2].hand.length,11);assert.equal(r.color,'red');assert.equal(r.drawStack,0);assert.equal(r.drawDueAt,0);assert.equal(currentPlayer(r).id,p[0].id);
+});
+test('paused matches do not automatically accept a pending penalty',()=>{
+  const {r,p}=scenario(3,{stackDraw:true});p[0].hand.push(card('red','draw2'));p[1].hand.push(card('blue','draw2'));
+  playCard(r,p[0].id,p[0].hand.at(-1).id);r.paused=true;const before=JSON.stringify(r);
+  assert.equal(settleDrawPenalty(r,r.drawDueAt+1000),false);assert.equal(JSON.stringify(r),before);
 });
 test('last action card applies its penalty before scoring',()=>{
   const {r,p}=scenario(2,{stackDraw:true});p[0].hand=[card('red','draw2')];callUno(r,p[0].id);const count=p[1].hand.length;

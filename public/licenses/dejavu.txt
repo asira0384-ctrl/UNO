@@ -51,4 +51,4 @@ License: bitstream-vera
  org.
 
 
-UNO PARTY uses vector outlines derived from the DejaVu Sans Condensed Bold digits.
+UNO PARTY uses vector outlines derived from DejaVu Sans Condensed Bold digits and DejaVu Sans Bold logo lettering.

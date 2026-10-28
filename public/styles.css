@@ -50,3 +50,21 @@ dialog{padding:25px 29px 28px;border:3px solid #8bd5f1;border-radius:23px;backgr
 @media(max-width:650px) and (max-height:680px) and (orientation:portrait){.opponent-seat.left,.opponent-seat.right{top:16%}.hand-crowded .opponent-seat.left,.hand-crowded .opponent-seat.right{top:13.5%}}
 
 .asset-credits{display:block;text-align:center;margin:14px 0 0;font-size:10px;color:#b7d5e7}.winner-trophy .icon{height:1em;width:1em}
+
+/* v1.5: a sculpted button, with all lettering contained in the vector artwork. */
+.game-screen .uno-button,.game-screen .uno-button.armed,.game-screen.my-turn .uno-button.ready{width:112px;height:112px;padding:0;border:0;border-radius:50%;background:none;box-shadow:none;transform:none;translate:none;filter:none;animation:none;display:block;isolation:isolate;touch-action:manipulation}
+.uno-button-art{display:block;width:100%;height:100%;pointer-events:none;user-select:none;transition:transform .13s ease,filter .2s ease}
+.game-screen .uno-button:disabled{opacity:1;filter:none;cursor:default}
+.game-screen .uno-button:active:not(:disabled){transform:none;translate:none;box-shadow:none}
+.game-screen .uno-button:active:not(:disabled) .uno-button-art{transform:translateY(4px) scale(.96)}
+.game-screen.my-turn .uno-button.ready .uno-button-art{filter:drop-shadow(0 0 5px #ffe52c) drop-shadow(0 0 9px #ffe52c88)}
+.uno-mark{position:absolute;bottom:10%;right:4%;display:none;place-items:center;width:26px;height:26px;border:2px solid #f3fff3;border-radius:50%;background:#48b454;color:#fff;box-shadow:0 2px 3px #153f2d55;pointer-events:none}.uno-mark .icon{width:17px;height:17px;stroke-width:3}.uno-button.armed .uno-mark{display:grid}
+.uno-controls{gap:0}.uno-controls>span{margin-top:-3px}
+.game-screen .uno-required{animation:none}.game-screen .uno-required .uno-button-art{animation:uno-art-pulse .28s ease-in-out 3}
+@keyframes uno-art-pulse{50%{transform:scale(1.1);filter:drop-shadow(0 0 8px #ffdf35)}}
+.install-link{display:flex;align-items:center;justify-content:center;gap:7px;margin:0 auto 12px;background:#0c447a66;border:1px solid #a4e3fa44;border-radius:20px;padding:8px 16px;color:#d9f5ff;font-size:11px;cursor:pointer}.install-link .icon{height:16px;width:16px}.install-link[hidden]{display:none}
+.dialog-install{max-width:410px}.install-heading{display:flex;align-items:center;gap:15px;margin:22px 0}.install-heading img{height:67px;width:67px;border-radius:17px;box-shadow:0 4px 13px #001e4c55}.install-heading strong{display:block;color:#fff3ab;font-size:19px}.install-heading span{font-size:11px;color:#b7dced}.install-steps{margin:20px 0;padding-left:24px;display:grid;gap:14px;line-height:1.8;font-size:13px}.install-steps li::marker{color:#ffdf6b;font-weight:800}.install-note,.install-or{color:#b7d6e7;font-size:10px;line-height:1.9;margin:18px 0}.install-or{text-align:center}.dialog-install>.small-game-button{display:block;margin:20px auto 0}.install-heading+.game-button{margin-top:7px}
+@media(max-width:650px) and (orientation:portrait){.game-screen .uno-button,.game-screen .uno-button.armed,.game-screen.my-turn .uno-button.ready{width:92px;height:92px}.uno-controls{right:3%}.uno-mark{width:22px;height:22px}.uno-mark .icon{width:14px;height:14px}.install-link{margin-bottom:10px;padding:7px 14px;font-size:10px}.install-steps{font-size:12px}}
+@media(max-width:650px) and (max-height:680px) and (orientation:portrait){.game-screen .uno-button,.game-screen .uno-button.armed,.game-screen.my-turn .uno-button.ready{width:82px;height:82px}.install-link{margin-bottom:6px;padding:6px 13px}}
+@media(max-height:520px) and (orientation:landscape){.game-screen .uno-button,.game-screen .uno-button.armed,.game-screen.my-turn .uno-button.ready{width:94px;height:94px}.dialog-install{max-width:460px}.install-heading{margin:8px 0}.install-heading img{height:45px;width:45px;border-radius:12px}.install-steps{gap:6px;font-size:11px;margin:12px 0}.install-note{margin:10px 0}}
+@media(prefers-reduced-motion:reduce){.uno-button-art{transition:none!important;animation:none!important}}

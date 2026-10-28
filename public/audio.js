@@ -1,5 +1,5 @@
-import { THEMES } from './themes.js?v=1.4';
-import { VOICE_FILE,VOICE_CLIPS } from './voice-clips.js?v=1.4';
+import { THEMES } from './themes.js?v=1.5';
+import { VOICE_FILE,VOICE_CLIPS } from './voice-clips.js?v=1.5';
 // Quiet paper effects, native MP3 music and short Japanese game calls.
 export const JAPANESE_CALLS={red:'レッド！',yellow:'イエロー！',green:'グリーン！',blue:'ブルー！',reverse:'リバース！',uno:'ウノ！'};
 export class PartyAudio {
@@ -54,7 +54,7 @@ export class PartyAudio {
   startMusic(){
     if(!this.hasGesture||!this.visible||!this.settings.music||this.settings.musicVolume===0)return;
     try{
-      if(!this.bgm){this.bgm=new Audio(THEMES[this.theme].music+'?v=1.4');this.bgm.loop=true;this.bgm.preload='auto';this.bgm.setAttribute('playsinline','');
+      if(!this.bgm){this.bgm=new Audio(THEMES[this.theme].music+'?v=1.5');this.bgm.loop=true;this.bgm.preload='auto';this.bgm.setAttribute('playsinline','');
         this.bgm.addEventListener('playing',()=>{this.bgmError='';this.notify();});this.bgm.addEventListener('pause',()=>this.notify());
         this.bgm.addEventListener('error',()=>{this.bgmError='音楽を読み込めません。ページを再読み込みしてね';this.notify();});}
       this.apply();if(this.bgm.paused)Promise.resolve(this.bgm.play()).then(()=>{if(!this.visible||!this.settings.music||!this.settings.musicVolume)this.bgm.pause();this.bgmError='';this.notify();},()=>{this.bgmError='「音を開始」をタップしてね';this.notify();});
@@ -62,10 +62,10 @@ export class PartyAudio {
   }
   setTheme(index){
     const next=Number.isInteger(index)&&index>=0&&index<THEMES.length?index:0;if(next===this.theme)return;
-    this.theme=next;if(this.bgm){this.bgm.pause();this.bgm.src=THEMES[next].music+'?v=1.4';this.bgm.currentTime=0;this.bgm.load?.();this.bgmError='';if(this.settings.music&&this.visible)this.startMusic();}
+    this.theme=next;if(this.bgm){this.bgm.pause();this.bgm.src=THEMES[next].music+'?v=1.5';this.bgm.currentTime=0;this.bgm.load?.();this.bgmError='';if(this.settings.music&&this.visible)this.startMusic();}
   }
   stopMusic(){this.bgm?.pause();}
-  async test(){this.unlock({gesture:true});try{this.testAudio ||=new Audio('/assets/audio/sound-test.mp3?v=1.4');this.testAudio.setAttribute('playsinline','');this.testAudio.volume=.6;this.testAudio.currentTime=0;await this.testAudio.play();return true;}catch{return false;}}
+  async test(){this.unlock({gesture:true});try{this.testAudio ||=new Audio('/assets/audio/sound-test.mp3?v=1.5');this.testAudio.setAttribute('playsinline','');this.testAudio.volume=.6;this.testAudio.currentTime=0;await this.testAudio.play();return true;}catch{return false;}}
   primeVoice(){
     if(this.voiceBusy||this.voiceMedia&&!this.voiceError)return;
     try{

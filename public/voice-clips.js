@@ -1,4 +1,4 @@
-export const VOICE_FILE="/assets/audio/voice-calls.mp3?v=1.4";
+export const VOICE_FILE="/assets/audio/voice-calls.mp3?v=1.5";
 export const VOICE_CLIPS={
   "red": {
     "offset": 0.35,
