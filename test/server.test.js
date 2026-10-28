@@ -25,11 +25,17 @@ test('real clients join, play, keep hands private, reconnect, and restore after 
   const html=await fetch(url+'/');assert.equal(html.status,200);assert.match(await html.text(),/UNO PARTY/);
   const music=await fetch(url+'/assets/audio/party-loop.mp3',{headers:{Range:'bytes=0-4095'}});
   assert.equal(music.status,206);assert.match(music.headers.get('content-type'),/audio\/mpeg/);assert.equal((await music.arrayBuffer()).byteLength,4096);
+  const voices=await fetch(url+'/assets/audio/voice-pack.mp3',{headers:{Range:'bytes=0-4095'}});
+  assert.equal(voices.status,206);assert.match(voices.headers.get('content-type'),/audio\/mpeg/);assert.equal((await voices.arrayBuffer()).byteLength,4096);
   const background=await fetch(url+'/assets/table-room.webp');assert.equal(background.status,200);assert.match(background.headers.get('content-type'),/image\/webp/);
   const alice=await connect(url),bob=await connect(url);clients.push(alice,bob);
   const created=await request(alice,'room:create',{name:'Alice',avatar:0});assert.equal(created.ok,true);assert.match(created.code,/^[A-Z2-9]{6}$/);
   const joined=await request(bob,'room:join',{code:created.code,name:'Bob',avatar:2});assert.equal(joined.ok,true);
   await until(()=>alice.view?.players.length===2);assert.equal((await request(bob,'game:start')).ok,false);
+  assert.equal(alice.view.settings.botDifficulty,'normal');
+  assert.equal((await request(bob,'room:settings',{botDifficulty:'hard'})).ok,false);
+  assert.equal((await request(alice,'room:settings',{botDifficulty:'easy'})).ok,true);
+  await until(()=>bob.view.settings.botDifficulty==='easy');
   assert.equal((await request(alice,'game:start')).ok,true);await until(()=>bob.view?.phase==='playing');
   assert.equal(alice.view.hand.length,7);assert.equal(bob.view.hand.length,7);
   assert.equal(JSON.stringify(alice.view).includes(bob.view.hand[0].id),false);
@@ -51,6 +57,7 @@ test('real clients join, play, keep hands private, reconnect, and restore after 
   const restored=await connect(`http://127.0.0.1:${nextAddress.port}`);clients.push(restored);
   assert.equal((await request(restored,'room:resume',{code:created.code,token:created.token})).ok,true);
   assert.equal(restored.view.phase,'playing');assert.deepEqual(restored.view.hand.map(c=>c.id).sort(),beforeReconnect);
+  assert.equal(restored.view.settings.botDifficulty,'easy');assert.ok(restored.view.turnNumber>=1);
   const intruder=await connect(`http://127.0.0.1:${nextAddress.port}`);clients.push(intruder);
   assert.equal((await request(intruder,'room:resume',{code:created.code,token:'wrong'})).ok,false);
 });

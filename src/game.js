@@ -4,7 +4,10 @@ export const COLORS = ['red', 'yellow', 'green', 'blue'];
 export const COLOR_NAMES = { red: '赤', yellow: '黄', green: '緑', blue: '青' };
 export const CARD_NAMES = { skip: 'スキップ', reverse: 'リバース', draw2: '+2', wild: 'ワイルド', wild4: '+4' };
 export const DEFAULT_SETTINGS = { stackDraw: false, turnSeconds: 30, startingCards: 7,
-  maxPlayers: 4, roundMinutes: 5, mode: 'solo', sevenSwap: false, zeroSeven: false, forcePlay: false };
+  maxPlayers: 4, roundMinutes: 5, mode: 'solo', sevenSwap: false, zeroSeven: false, forcePlay: false, botDifficulty: 'normal' };
+
+export const BOT_LEVELS = { easy: { delay: 1600, jitter: 800, catchChance: .05 },
+  normal: { delay: 1250, jitter: 700, catchChance: .16 }, hard: { delay: 850, jitter: 550, catchChance: .5 } };
 
 export function normalizeSettings(input = {}) {
   const s = input && typeof input === 'object' ? input : {};
@@ -12,7 +15,8 @@ export function normalizeSettings(input = {}) {
   return { stackDraw: s.stackDraw === true, turnSeconds: [15,30,60].includes(s.turnSeconds) ? s.turnSeconds : 30,
     startingCards: 7, maxPlayers: mode === 'teams' ? 4 : [2,3,4].includes(s.maxPlayers) ? s.maxPlayers : 4,
     roundMinutes: [0,3,5].includes(s.roundMinutes) ? s.roundMinutes : 5, mode,
-    sevenSwap: s.sevenSwap === true, zeroSeven: s.zeroSeven === true, forcePlay: s.forcePlay === true };
+    sevenSwap: s.sevenSwap === true, zeroSeven: s.zeroSeven === true, forcePlay: s.forcePlay === true,
+    botDifficulty: ['easy','normal','hard'].includes(s.botDifficulty) ? s.botDifficulty : 'normal' };
 }
 
 export function deck() {
@@ -63,6 +67,7 @@ export function nextIndex(room, steps = 1) {
   return ((room.currentIndex + room.direction * steps) % room.players.length + room.players.length) % room.players.length;
 }
 function advance(room, steps = 1) {
+  room.turnNumber = (room.turnNumber || 0) + 1;
   room.currentIndex = nextIndex(room, steps);
   room.drawnCardId = null;
   currentPlayer(room).unoArmed = false;
@@ -107,7 +112,7 @@ export function startGame(room, dealDelay = 0) {
   room.discard = [top]; room.color = top.color;
   room.phase = 'playing'; room.direction = 1;
   room.currentIndex = room.round % room.players.length;
-  room.round++; room.drawnCardId = null; room.drawStack = 0; room.drawType = null;
+  room.round++; room.turnNumber = 1; room.drawnCardId = null; room.drawStack = 0; room.drawType = null;
   room.pendingUno = null; room.winnerId = null; room.winnerTeam = null; room.draw = false; room.rankings = []; room.paused = false;
   room.pauseStartedAt = null; room.dealUntil = dealDelay ? Date.now() + dealDelay : 0;
   const startsAt = Date.now() + dealDelay;
@@ -184,7 +189,8 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false, 
   room.pendingUno = null;
   player.hand.splice(index, 1);
   room.discard.push(card); room.color = card.color === 'wild' ? chosenColor : card.color;
-  const didUno = declared || player.unoArmed;
+  const wasArmed = player.unoArmed;
+  const didUno = declared || wasArmed;
   player.unoArmed = false;
   player.uno = player.hand.length === 1 && didUno;
 
@@ -223,7 +229,8 @@ export function playCard(room, playerId, cardId, chosenColor, declared = false, 
   player.uno = player.hand.length === 1 && (exchange ? true : didUno);
   if (player.hand.length === 1 && !player.uno) room.pendingUno = { playerId: player.id };
   event(room, 'play', `${player.name} が ${COLOR_NAMES[room.color]}の${CARD_NAMES[card.value] || card.value} を出した${exchange ? ` · ${exchange.text}` : ''}`,
-    { actorId: player.id, card, color: room.color, targetId, amount, uno: player.uno, exchange });
+    { actorId: player.id, card, color: room.color, targetId, amount, uno: player.uno,
+      announceUno: player.uno && !wasArmed && !exchange, exchange });
   if (!player.hand.length) { finish(room, player); return; }
   advance(room, steps);
 }
@@ -270,6 +277,7 @@ export function callUno(room, playerId) {
   if (room.phase !== 'playing') throw new Error('対戦中に使えます');
   const player = room.players.find(p => p.id === playerId);
   if (!player || player.hand.length > 2 || player.hand.length === 0) throw new Error('手札が2枚になったらUNOを押せます');
+  if (player.uno || player.unoArmed) throw new Error('すでにUNOを宣言しています');
   if (player.hand.length === 2 && currentPlayer(room).id !== player.id) throw new Error('自分の番になったらUNOを押してね');
   if (player.hand.length === 1) {
     player.uno = true;
@@ -292,20 +300,42 @@ export function bestColor(hand) {
     .sort((a,b) => b.count - a.count)[0].color;
 }
 
-export function botMove(room) {
+export function chooseBotPlay(room, player = currentPlayer(room), random = Math.random) {
+  const level = room.settings.botDifficulty || 'normal';
+  const pick = list => list[Math.min(list.length - 1, Math.floor(random() * list.length))];
+  const playable = player.hand.filter(c => canPlay(room, player, c));
+  if (!playable.length) return null;
+  // Easy sometimes draws voluntarily; it still follows exactly the same rules.
+  if (level === 'easy' && !room.drawnCardId && !room.drawStack && random() < .12) return null;
+  const selfIndex = room.players.indexOf(player);
+  const rivals = room.players.filter((p,i) => p.id !== player.id && (room.settings.mode !== 'teams' || i % 2 !== selfIndex % 2));
+  const next = room.players[nextIndex(room)];
+  const nextIsRival = rivals.includes(next);
+  const weight = c => {
+    let value = cardPoints(c) - (c.color === 'wild' ? 60 : 0) + player.hand.filter(h => h.color === c.color).length * 3;
+    if (level === 'hard') {
+      if (['skip','draw2','wild4'].includes(c.value)) value += nextIsRival ? (next.hand.length <= 2 ? 50 : 12) : -45;
+      if (c.value === '7' && (room.settings.zeroSeven || room.settings.sevenSwap)) value += Math.max(0,player.hand.length - 1 - Math.min(...rivals.map(p=>p.hand.length))) * 10;
+    }
+    return value;
+  };
+  playable.sort((a,b) => weight(b) - weight(a));
+  // Normal deliberately mixes simple choices with its usual color preference.
+  const card = level === 'hard' ? playable[0] : random() < (level === 'easy' ? .9 : .6) ? pick(playable) : playable[0];
+  const ownColors = COLORS.filter(color => player.hand.some(c=>c.id!==card.id && c.color===color));
+  const color = level === 'easy' ? pick(COLORS) : level === 'normal' && ownColors.length && random() < .25 ? pick(ownColors) : bestColor(player.hand.filter(c=>c.id!==card.id));
+  const targets = rivals.length ? rivals : room.players.filter(p=>p.id!==player.id);
+  const target = level === 'hard' ? [...targets].sort((a,b)=>a.hand.length-b.hand.length)[0] : pick(targets);
+  const declared = level === 'hard' || random() >= (level === 'easy' ? .2 : .05);
+  return { card, color, targetId: target?.id, declared };
+}
+
+export function botMove(room, random = Math.random) {
   const player = currentPlayer(room);
   if (room.phase !== 'playing' || room.paused || !player?.bot) return;
-  const playable = player.hand.filter(c => canPlay(room, player, c));
-  playable.sort((a,b) => {
-    // Keep flexible wild cards unless they are the only way out.
-    const weight = c => cardPoints(c) - (c.color === 'wild' ? 60 : 0)
-      + player.hand.filter(h => h.color === c.color).length * 3;
-    return weight(b) - weight(a);
-  });
-  if (playable.length) {
-    const card = playable[0];
-    const target = room.players.filter(p => p.id !== player.id).sort((a,b) => a.hand.length - b.hand.length)[0];
-    playCard(room, player.id, card.id, bestColor(player.hand), true, target?.id);
+  const move = chooseBotPlay(room, player, random);
+  if (move) {
+    playCard(room, player.id, move.card.id, move.color, move.declared, move.targetId);
   } else if (room.drawnCardId) passTurn(room, player.id);
   else drawCard(room, player.id);
 }
@@ -313,7 +343,7 @@ export function botMove(room) {
 export function publicState(room, playerId) {
   const self = room.players.find(p => p.id === playerId);
   return { code: room.code, hostId: room.hostId, phase: room.phase, round: room.round,
-    revision: room.revision, settings: room.settings, selfId: playerId,
+    revision: room.revision, turnNumber: room.turnNumber || 0, settings: room.settings, selfId: playerId,
     players: room.players.map((p,i) => ({ id: p.id, name: p.name, avatar: p.avatar, bot: p.bot,
       connected: p.connected, count: p.hand.length, uno: p.uno, score: p.score, team: room.settings.mode === 'teams' ? i % 2 : null })),
     hand: self?.hand || [], playableIds: self?.hand.filter(c => canPlay(room, self, c)).map(c => c.id) || [],

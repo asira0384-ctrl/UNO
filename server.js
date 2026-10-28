@@ -6,7 +6,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRoom, createPlayer, startGame, playCard, drawCard, passTurn, callUno,
-  catchUno, publicState, currentPlayer, botMove, event, normalizeSettings, finishOnTime } from './src/game.js';
+  catchUno, publicState, currentPlayer, botMove, event, normalizeSettings, finishOnTime, BOT_LEVELS } from './src/game.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -102,10 +102,10 @@ export async function createGameServer(options = {}) {
       botTimers.delete(room.code);
       if (rooms.get(room.code) !== room || room.phase !== 'playing' || room.paused || currentPlayer(room)?.id !== p.id || !p.bot) return;
       try {
-        if (room.pendingUno && room.pendingUno.playerId !== p.id && randomInt(3) === 0) catchUno(room, p.id);
+        if (room.pendingUno && room.pendingUno.playerId !== p.id && Math.random() < (BOT_LEVELS[room.settings.botDifficulty] || BOT_LEVELS.normal).catchChance) catchUno(room, p.id);
         botMove(room); publish(room);
       } catch (e) { console.error('[cpu]', e.message); }
-    }, options.botDelay ?? (850 + randomInt(550)));
+    }, options.botDelay ?? (()=>{const l=BOT_LEVELS[room.settings.botDifficulty]||BOT_LEVELS.normal;return l.delay+randomInt(l.jitter);})());
     timer.unref?.(); botTimers.set(room.code, { key, timer });
   }
   function setPaused(room) {
