@@ -1,10 +1,11 @@
-import { PartyAudio } from './audio.js?v=1.5';
-import { TurnFeedback, turnStatus, eventVoices } from './feedback.js?v=1.5';
-import { fitHand, dealSequence } from './layout.js?v=1.5';
-import { cardMarkup as cardHTML } from './cards.js?v=1.5';
-import { CardInput,insideDropZone } from './interaction.js?v=1.5';
-import { THEMES,themeIndex } from './themes.js?v=1.5';
-import { AppInstall,installPlatform } from './install.js?v=1.5';
+import { PartyAudio } from './audio.js?v=1.6';
+import { TurnFeedback, turnStatus, eventVoices } from './feedback.js?v=1.6';
+import { fitHand, dealSequence } from './layout.js?v=1.6';
+import { cardMarkup as cardHTML } from './cards.js?v=1.6';
+import { CardInput,insideDropZone } from './interaction.js?v=1.6';
+import { THEMES,themeIndex } from './themes.js?v=1.6';
+import { AppInstall,installPlatform } from './install.js?v=1.6';
+import { VIEW_MODES,VIEW_LABELS,viewMode } from './viewport.js?v=1.6';
 
 const $ = (query,root=document) => root.querySelector(query);
 const app=$('#app'), modalRoot=$('#modal-root'), fxRoot=$('#fx-root');
@@ -29,6 +30,7 @@ const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function read(key,fallback) { try { return JSON.parse(localStorage.getItem(key))??fallback; } catch { return fallback; } }
 function write(key,value) { try { localStorage.setItem(key,JSON.stringify(value)); } catch {} }
+let selectedView=viewMode(read('uno-view','auto'));
 let profile=read('uno-profile',{name:'',avatar:0});
 if(!Number.isInteger(profile.avatar)||profile.avatar<0||profile.avatar>7)profile.avatar=0;
 let session=read('uno-session',null);
@@ -94,8 +96,13 @@ function renderHeader() {
 }
 
 function homeHTML() {
-  return `<section class="home-screen"><div class="home-intro"><span class="lobby-eyebrow">PLAY TOGETHER, ANYWHERE.</span><h1>さあ、もう一勝負。</h1><p>いつもの友達と。ちょっと空いた時間に。</p></div><div class="mode-cards"><button class="mode-card classic-mode" data-action="classic" aria-label="クラシック CPUと練習"><span class="mode-pill">CPUと練習</span><span class="mode-illustration card-illustration">${cardHTML({color:'blue',value:'reverse'})}${cardHTML({color:'red',value:'7'})}${cardHTML({color:'wild',value:'wild4'})}</span><strong>クラシック</strong><small>ひとりで気軽にプレイ</small><span class="mode-go">PLAY ${icon('arrow')}</span></button><button class="mode-card friends-mode" data-action="friends" aria-label="友達と遊ぶ"><span class="mode-pill">ONLINE · 2〜4人</span><span class="mode-illustration">${houseArt('create')}</span><strong>友達と遊ぶ</strong><small>ルームをつくって、みんなで集合</small><span class="mode-go">LET'S PARTY ${icon('arrow')}</span></button></div><div class="home-bottom"><button class="lobby-utility" data-action="help"><span>${icon('book')}</span>遊び方</button><button class="start-audio-button" data-action="enable-audio">${icon('sound')}<span data-audio-home>音ありで遊ぶ</span></button><button class="lobby-utility" data-action="audio"><span>${icon('settings')}</span>設定</button></div>${!installation.installed?`<button class="install-link" data-action="install">${icon('down')}ホーム画面に追加</button>`:''}<span class="fan-note">UNO風オンラインカードゲーム · 2〜4人でオンライン</span></section>`;
+  return `<section class="home-screen"><div class="home-intro"><span class="lobby-eyebrow">PLAY TOGETHER, ANYWHERE.</span><h1>さあ、もう一勝負。</h1><p>いつもの友達と。ちょっと空いた時間に。</p></div><div class="mode-cards"><button class="mode-card classic-mode" data-action="classic" aria-label="クラシック CPUと練習"><span class="mode-pill">CPUと練習</span><span class="mode-illustration card-illustration">${cardHTML({color:'blue',value:'reverse'})}${cardHTML({color:'red',value:'7'})}${cardHTML({color:'wild',value:'wild4'})}</span><strong>クラシック</strong><small>ひとりで気軽にプレイ</small><span class="mode-go">PLAY ${icon('arrow')}</span></button><button class="mode-card friends-mode" data-action="friends" aria-label="友達と遊ぶ"><span class="mode-pill">ONLINE · 2〜4人</span><span class="mode-illustration">${houseArt('create')}</span><strong>友達と遊ぶ</strong><small>ルームをつくって、みんなで集合</small><span class="mode-go">LET'S PARTY ${icon('arrow')}</span></button></div><div class="home-view"><span>画面の向き</span>${viewChoices()}</div><div class="home-bottom"><button class="lobby-utility" data-action="help"><span>${icon('book')}</span>遊び方</button><button class="start-audio-button" data-action="enable-audio">${icon('sound')}<span data-audio-home>音ありで遊ぶ</span></button><button class="lobby-utility" data-action="audio"><span>${icon('settings')}</span>設定</button></div>${!installation.installed?`<button class="install-link" data-action="install">${icon('down')}ホーム画面に追加</button>`:''}<span class="fan-note">UNO風オンラインカードゲーム · 2〜4人でオンライン</span></section>`;
 }
+
+function viewChoices(){return `<div class="view-choices" role="group" aria-label="画面の向き">${VIEW_MODES.map(mode=>`<button class="view-choice ${selectedView===mode?'selected':''}" data-action="view-mode" data-mode="${mode}" aria-pressed="${selectedView===mode}">${VIEW_LABELS[mode]}</button>`).join('')}</div>`;}
+function updateViewChoices(){for(const el of document.querySelectorAll('[data-action="view-mode"]')){const selected=el.dataset.mode===selectedView;el.classList.toggle('selected',selected);el.setAttribute('aria-pressed',String(selected));}}
+function chooseView(mode){selectedView=viewMode(mode);write('uno-view',selectedView);if(parent!==window)parent.postMessage({type:'uno-view',mode:selectedView},location.origin);updateViewChoices();}
+window.addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin||event.data?.type!=='uno-view-state')return;selectedView=viewMode(event.data.mode);updateViewChoices();});
 
 function updateInstallUI() {
   const link=$('.install-link');if(link)link.hidden=installation.installed;
@@ -167,7 +174,7 @@ function gameHTML() {
   <div class="uno-controls"><button class="uno-button ${state.unoArmed||me?.uno?'armed':''} ${hand.length===2&&mine&&!state.unoArmed?'ready':''}" data-action="uno" ${!connected||state.phase!=='playing'||dealing||hand.length>2||hand.length===0||state.unoArmed||me?.uno||(hand.length===2&&!mine)?'disabled':''} aria-label="UNOを宣言" aria-pressed="${state.unoArmed||me?.uno||false}"><img class="uno-button-art" src="/assets/uno-call.svg" alt="" draggable="false"><span class="uno-mark">${icon('check')}</span></button><span>${state.unoArmed||me?.uno?'宣言済み！':'残り1枚の前に！'}</span></div>
   ${state.pendingUnoId&&state.pendingUnoId!==state.selfId?'<button class="catch-button" data-action="catch">UNO忘れ！<br><strong>指摘する +2</strong></button>':''}
   ${reactionOpen?`<div class="reaction-tray">${REACTIONS.map(([e,label])=>`<button data-action="reaction" data-emoji="${e}" aria-label="${label}">${label}</button>`).join('')}</div>`:''}
-  <span class="latest-event">${esc(state.events.at(-1)?.text||'')}</span><button class="rotate-screen-button" data-action="fullscreen" aria-label="全画面表示">${icon('fullscreen')}<span>横向きでも遊べるよ</span></button>
+  <span class="latest-event">${esc(state.events.at(-1)?.text||'')}</span><button class="rotate-screen-button" data-action="view-settings" aria-label="画面の向き">${icon('rotate')}<span>画面の向き</span></button>
   ${dealing?`<div class="deal-source">${Array.from({length:5},()=>cardHTML({back:true})).join('')}</div><span class="deal-label">カードを配っています</span>`:''}
   ${state.paused?'<div class="paused-cover"><strong>ちょっと、ひと休み。</strong><span>プレイヤーが戻ったら再開します</span></div>':''}</section>`;
 }
@@ -197,9 +204,10 @@ function dialogHead(title,close=true) {
   return `<div class="dialog-head"><h2>${title}</h2>${close?'<button class="dialog-close" data-action="close" aria-label="閉じる">×</button>':''}</div>`;
 }
 function dialogHTML(type) {
+  if(type==='view')return `${dialogHead('画面の向き')}<p class="dialog-description">端末を傾けなくても、好きな向きに切り替えられるよ。</p>${viewChoices()}<button class="game-button green" data-action="close">ゲームへ戻る</button>`;
   if(type==='install')return installHTML();
   if(type==='profile')return `${dialogHead('プレイヤー設定')}<div class="profile-preview">${avatar(profile)}</div><label class="field-label" for="player-name">プレイヤー名</label><input class="text-input" id="player-name" autocomplete="nickname" maxlength="16" value="${esc(profile.name)}"><label class="photo-picker" for="avatar-file">${icon('image')}写真・画像を選ぶ</label><input class="avatar-file" type="file" id="avatar-file" accept="image/*"><div class="avatar-picker" role="group" aria-label="アイコンを選択">${AVATARS.map((a,i)=>`<button class="avatar-option ${!profile.image&&profile.avatar===i?'selected':''}" data-action="avatar" data-avatar="${i}" aria-label="アイコン ${i+1}" aria-pressed="${!profile.image&&profile.avatar===i}"><img src="${a}" alt=""></button>`).join('')}</div><button class="game-button gold" data-action="save-profile">保存 ${icon('check')}</button>`;
-  if(type==='audio')return `${dialogHead('サウンド設定')}<div class="audio-status"><span class="audio-status-dot"></span><span data-audio-status>音を開始してね</span></div><div class="audio-start-buttons"><button class="game-button gold compact" data-action="enable-audio">${icon('sound')}音を開始</button><button class="small-game-button" data-action="test-audio">♪ 音をテスト</button></div><div class="sound-row"><span>BGM<small>パーティーを盛り上げる音楽</small></span><button class="switch ${sound.settings.music?'on':''}" role="switch" aria-checked="${sound.settings.music}" data-action="music" aria-label="BGMを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.musicVolume}" data-volume="musicVolume" aria-label="BGM音量"><span data-volume-label="musicVolume">${sound.settings.musicVolume}%</span></div><div class="sound-row"><span>効果音<small>カード・ドロー・UNO・勝利</small></span><button class="switch ${sound.settings.effects?'on':''}" role="switch" aria-checked="${sound.settings.effects}" data-action="effects" aria-label="効果音を切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.effectsVolume}" data-volume="effectsVolume" aria-label="効果音の音量"><span data-volume-label="effectsVolume">${sound.settings.effectsVolume}%</span></div><div class="sound-row"><span>ボイス<small>専用に調整した短いゲームコール</small></span><button class="switch ${sound.settings.voices?'on':''}" role="switch" aria-checked="${sound.settings.voices}" data-action="voices" aria-label="ボイスを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.voiceVolume}" data-volume="voiceVolume" aria-label="ボイス音量"><span data-volume-label="voiceVolume">${sound.settings.voiceVolume}%</span></div><button class="small-game-button voice-test-button" data-action="test-voice">${icon('arrow')} ボイスをテスト</button><div class="sound-row"><span>残り時間の警告<small>自分の手番と試合終了の、最後の3秒だけ</small></span><button class="switch ${sound.settings.alerts?'on':''}" role="switch" aria-checked="${sound.settings.alerts}" data-action="alerts" aria-label="警告音を切り替え"></button></div><p class="audio-engine-status" data-audio-engine></p><p class="audio-footnote">スマホで聞こえない時は「音を開始」をタップ。<br>iPhoneのBGM音量は、端末側の音量ボタンでも調節してね。</p><a class="asset-credits" href="/credits.html" target="_blank" rel="noopener">音源・素材のクレジット</a>`;
+  if(type==='audio')return `${dialogHead('サウンド設定')}<div class="audio-status"><span class="audio-status-dot"></span><span data-audio-status>音を開始してね</span></div><div class="audio-start-buttons"><button class="game-button gold compact" data-action="enable-audio">${icon('sound')}音を開始</button><button class="small-game-button" data-action="test-audio">♪ 音をテスト</button></div><div class="sound-row"><span>BGM<small>パーティーを盛り上げる音楽</small></span><button class="switch ${sound.settings.music?'on':''}" role="switch" aria-checked="${sound.settings.music}" data-action="music" aria-label="BGMを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.musicVolume}" data-volume="musicVolume" aria-label="BGM音量"><span data-volume-label="musicVolume">${sound.settings.musicVolume}%</span></div><div class="sound-row"><span>効果音<small>カード・ドロー・UNO・勝利</small></span><button class="switch ${sound.settings.effects?'on':''}" role="switch" aria-checked="${sound.settings.effects}" data-action="effects" aria-label="効果音を切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.effectsVolume}" data-volume="effectsVolume" aria-label="効果音の音量"><span data-volume-label="effectsVolume">${sound.settings.effectsVolume}%</span></div><div class="sound-row"><span>ボイス<small>専用に調整した短いゲームコール</small></span><button class="switch ${sound.settings.voices?'on':''}" role="switch" aria-checked="${sound.settings.voices}" data-action="voices" aria-label="ボイスを切り替え"></button></div><div class="volume-row"><input type="range" min="0" max="100" value="${sound.settings.voiceVolume}" data-volume="voiceVolume" aria-label="ボイス音量"><span data-volume-label="voiceVolume">${sound.settings.voiceVolume}%</span></div><div class="voice-tests" role="group" aria-label="ボイスの試聴">${[['red','レッド'],['blue','ブルー'],['yellow','イエロー'],['green','グリーン'],['reverse','リバース'],['skip','スキップ'],['uno','UNO']].map(([name,label])=>`<button class="voice-test" data-action="test-voice" data-call="${name}">${label}</button>`).join('')}</div><p class="voice-test-note">各5種類からランダムに再生</p><div class="sound-row"><span>残り時間の警告<small>自分の手番と試合終了の、最後の3秒だけ</small></span><button class="switch ${sound.settings.alerts?'on':''}" role="switch" aria-checked="${sound.settings.alerts}" data-action="alerts" aria-label="警告音を切り替え"></button></div><p class="audio-engine-status" data-audio-engine></p><p class="audio-footnote">スマホで聞こえない時は「音を開始」をタップ。<br>iPhoneのBGM音量は、端末側の音量ボタンでも調節してね。</p><a class="asset-credits" href="/credits.html" target="_blank" rel="noopener">音源・素材のクレジット</a>`;
   if(type==='create-room'||type==='room-settings') {
     const editing=type==='room-settings',host=!editing||state.hostId===state.selfId;
     return `${dialogHead(editing?'ルーム設定':'部屋を作成')}<p class="setup-description">${editing?'このルームで遊ぶルール':'自分たちだけのルールで、カードパーティー。'}</p>${setupForm(draft,!host)}<button class="game-button ${host?'green':'blue'}" data-action="${host?editing?'save-room-settings':'create-configured':'close'}">${host?editing?'設定を保存':'作成する':'閉じる'} ${icon('check')}</button>`;
@@ -209,7 +217,7 @@ function dialogHTML(type) {
   if(type==='help')return `${dialogHead('遊び方')}<div class="rule-list">${[['色か数字を合わせて出す','場と同じ色・数字・記号を選択。中央へドラッグするかダブルタップで出そう。先に全部出したら勝ち！'],['出せなければ山札をタップ','1枚引いて、出せる場合はそのカードを出せるよ。「強制プレイ」がOFFならパスもOK。'],['手札2枚になったらUNO!','自分の番にUNOボタンを押してから出そう。押すまで残り1枚になるカードは出せないよ。'],['アクションで大逆転','スキップ・リバース・+2・ワイルド・+4で流れを変えよう。+4は、出せるカードが手札にあっても使えるよ。色を指定すると、その色のカードを出せるようになる。']].map((r,i)=>`<div class="rule-item"><span class="rule-num">${i+1}</span><div><strong>${r[0]}</strong><p>${r[1]}</p></div></div>`).join('')}</div><div class="special-rules"><strong>追加ルール</strong><p>7枚交換：7で選んだ相手と手札交換。<br>0–7：0で全員の手札が次の人へ、7で相手と交換。<br>+2・+4：自動で受け取って1回休み。<br>スタッキング：同じ+2同士・+4同士で4秒以内に重ね返せる。返さなければ自動で受け取る。<br>2vs2：向かいの席が味方。どちらかが上がるとチームの勝ち。<br>時間切れ：残りカードの合計点が少ない人・チームが勝ち。数字はその数字、記号は20点、ワイルドは50点。</p></div><p class="dialog-description">UNOはカードを出す前に必須。<br>通信が30秒切れるとCPUが代行。戻ったら自分で操作できるよ。</p><button class="game-button green" data-action="close">わかった！ ${icon('check')}</button>`;
   if(type==='leave')return `${dialogHead('ルームを退出する？')}<p class="dialog-description">${state?.phase==='playing'?'対戦が続く場合は、あなたの代わりにCPUがプレイします。':'また遊ぶ時は、新しいルームを作るか参加してね。'}</p><div class="dialog-buttons"><button class="game-button gold" data-action="confirm-leave">退出する</button><button class="small-game-button" data-action="close">もう少し遊ぶ</button></div>`;
   if(type==='log')return `${dialogHead('ゲームの履歴')}<div class="event-log">${[...(state?.events||[])].reverse().map(e=>`<div class="log-entry"><span class="log-time">${new Date(e.at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span><span>${esc(e.text)}</span></div>`).join('')}</div>`;
-  if(type==='game-settings')return `${dialogHead('ゲーム設定')}<div class="game-setting-summary"><span>ROOM <b>${state.code}</b></span><span>${state.settings.mode==='teams'?'2 vs 2':'個人戦'} · ${state.settings.roundMinutes?`${state.settings.roundMinutes}分`:'時間無制限'}</span><span>CPU：${DIFFICULTIES[state.settings.botDifficulty]||'普通'}</span><span>スタッキング ${state.settings.stackDraw?'ON':'OFF'}</span></div><div class="dialog-buttons"><button class="game-button blue" data-action="audio">${icon('sound')}サウンド設定</button><button class="small-game-button" data-action="help">遊び方・ルール</button><button class="small-game-button" data-action="install">ホーム画面に追加</button><button class="small-game-button" data-action="fullscreen">${icon('fullscreen')}全画面表示</button><button class="quiet-button" data-action="leave">ルームを退出する</button></div>`;
+  if(type==='game-settings')return `${dialogHead('ゲーム設定')}<div class="game-setting-summary"><span>ROOM <b>${state.code}</b></span><span>${state.settings.mode==='teams'?'2 vs 2':'個人戦'} · ${state.settings.roundMinutes?`${state.settings.roundMinutes}分`:'時間無制限'}</span><span>CPU：${DIFFICULTIES[state.settings.botDifficulty]||'普通'}</span><span>スタッキング ${state.settings.stackDraw?'ON':'OFF'}</span></div><div class="dialog-buttons"><button class="game-button blue" data-action="audio">${icon('sound')}サウンド設定</button><button class="small-game-button" data-action="help">遊び方・ルール</button><button class="small-game-button" data-action="install">ホーム画面に追加</button><div class="settings-view"><span>画面の向き</span>${viewChoices()}</div><button class="quiet-button" data-action="leave">ルームを退出する</button></div>`;
   if(type==='result') {
     const winner=state.players.find(p=>p.id===state.winnerId),me=state.players.find(p=>p.id===state.selfId);
     const won=state.rankings.find(p=>p.id===state.selfId)?.won,host=state.hostId===state.selfId;
@@ -222,7 +230,7 @@ function dialogHTML(type) {
 
 function openDialog(type) {
   closeDialog(false);dialogType=type;
-  const d=document.createElement('dialog');d.className=`dialog-${type}`;d.innerHTML=dialogHTML(type);d.setAttribute('aria-label',({install:'ホーム画面に追加',audio:'サウンド設定',profile:'プレイヤー設定',help:'遊び方',wild:'色を選ぶ',swap:'手札を交換する相手',leave:'退出の確認',log:'ゲームの履歴',result:'対戦結果','create-room':'部屋を作成','room-settings':'ルーム設定','game-settings':'ゲーム設定'})[type]);
+  const d=document.createElement('dialog');d.className=`dialog-${type}`;d.innerHTML=dialogHTML(type);d.setAttribute('aria-label',({view:'画面の向き',install:'ホーム画面に追加',audio:'サウンド設定',profile:'プレイヤー設定',help:'遊び方',wild:'色を選ぶ',swap:'手札を交換する相手',leave:'退出の確認',log:'ゲームの履歴',result:'対戦結果','create-room':'部屋を作成','room-settings':'ルーム設定','game-settings':'ゲーム設定'})[type]);
   modalRoot.append(d);d.addEventListener('cancel',()=>{dialogType=null;wildCardId=null;});
   d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});
   d.showModal();updateAudioStatus();
@@ -270,6 +278,7 @@ async function perform(fn) {
 function updateRoomURL(code) {
   const url=new URL(location.href);if(code)url.searchParams.set('room',code);else url.searchParams.delete('room');
   history.replaceState({},'',url.pathname+url.search+url.hash);
+  if(parent!==window)parent.postMessage({type:'uno-room',code},location.origin);
 }
 socket.on('connect',async()=>{
   connected=true;updateConnection();
@@ -440,6 +449,8 @@ document.addEventListener('click',async e=>{
     sound.unlock({gesture:true});updateAudioStatus();
     if(dialogType==='audio')openDialog('audio');toast('音声を開始します。端末の音量も上げてね');return;
   }
+  if(action==='view-settings'){openDialog('view');return;}
+  if(action==='view-mode'){chooseView(button.dataset.mode);return;}
   if(action==='install'){openDialog('install');return;}
   if(action==='install-now'){
     try{const accepted=await installation.prompt();if(accepted)toast('追加の案内を確認してね');}
@@ -449,13 +460,13 @@ document.addEventListener('click',async e=>{
   if(action==='copy-app-url'){await copyText(location.origin+'/', 'ゲームのURLをコピーしたよ');return;}
   if(action==='test-voice'){
     sound.unlock({gesture:true});sound.set('voices',true);if(!sound.settings.voiceVolume)sound.set('voiceVolume',85);
-    sound.cancelVoices();sound.announce('red');sound.announce('blue');sound.announce('uno');toast('ゲーム用ボイスをテストします');return;
+    sound.cancelVoices();sound.announce(button.dataset.call||'uno');toast('ボイスを再生します');return;
   }
   if(action==='test-audio'){sound.test().then(ok=>toast(ok?'テスト音を再生しました':'再生できませんでした。Safariで開き直して試してね',!ok));return;}
   if(action==='leave'){openDialog('leave');return;}
   if(action==='copy-code'){copyText(state.code,'ルームコードをコピーしたよ');return;}
   if(action==='invite'){
-    const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('room',state.code);
+    const url=new URL('/',location.origin);url.searchParams.set('room',state.code);
     if(navigator.share)navigator.share({title:'UNO PARTYで遊ぼう！',text:`ルームコード：${state.code}`,url:url.href}).catch(err=>{if(err.name!=='AbortError')copyText(url.href,'招待リンクをコピーしたよ');});
     else copyText(url.href,'招待リンクをコピーしたよ');return;
   }
@@ -637,4 +648,5 @@ function animateWinningCard(play,from){
   setTimeout(()=>card.remove(),1000);
 }
 
-render();socket.connect();
+if(parent===window&&location.pathname==='/game.html')location.replace('/'+location.search+location.hash);
+else{render();socket.connect();}

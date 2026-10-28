@@ -1,4 +1,4 @@
-import { NUMERALS } from './numerals.js?v=1.5';
+import { NUMERALS } from './numerals.js?v=1.6';
 export const CARD_COLORS={red:'#e51b32',yellow:'#f4c817',green:'#128c45',blue:'#086cb6'};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const svg=(body,cls='')=>`<svg class="card-symbol ${cls}" viewBox="0 0 100 100" aria-hidden="true">${body}</svg>`;

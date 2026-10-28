@@ -13,19 +13,11 @@
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/app/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css?v=1.5">
+  <link rel="stylesheet" href="/shell.css?v=1.6">
 </head>
 <body>
-  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
-  <header class="site-header">
-    <button class="brand" data-action="home" aria-label="UNO PARTY ホーム"><span class="brand-mark">UNO!</span><span class="brand-sub">PARTY</span></button>
-    <div class="header-right"><span class="connection" id="connection"><i></i><span>接続中</span></span><button class="icon-button" data-action="audio" aria-label="サウンド設定" title="サウンド設定" id="sound-button"></button><button class="icon-button" data-action="help" aria-label="遊び方" title="遊び方"><span class="help-icon">?</span></button></div>
-  </header>
-  <main id="app"><div class="initial-loading"><span class="loading-card"></span><p>テーブルを準備中…</p></div></main>
-  <div id="modal-root"></div>
-  <div id="fx-root" aria-hidden="true"></div>
-  <div id="toast" role="status" aria-live="polite"></div>
-  <script src="/socket.io/socket.io.js" defer></script>
-  <script type="module" src="/app.js?v=1.5"></script>
+  <div id="game-stage"><iframe id="game-frame" title="UNO PARTY ゲーム" allow="autoplay; fullscreen" allowfullscreen></iframe></div>
+  <div id="shell-loading" role="status">テーブルを準備中…</div>
+  <script type="module" src="/shell.js?v=1.6"></script>
 </body>
 </html>

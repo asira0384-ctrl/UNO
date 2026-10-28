@@ -68,3 +68,35 @@ dialog{padding:25px 29px 28px;border:3px solid #8bd5f1;border-radius:23px;backgr
 @media(max-width:650px) and (max-height:680px) and (orientation:portrait){.game-screen .uno-button,.game-screen .uno-button.armed,.game-screen.my-turn .uno-button.ready{width:82px;height:82px}.install-link{margin-bottom:6px;padding:6px 13px}}
 @media(max-height:520px) and (orientation:landscape){.game-screen .uno-button,.game-screen .uno-button.armed,.game-screen.my-turn .uno-button.ready{width:94px;height:94px}.dialog-install{max-width:460px}.install-heading{margin:8px 0}.install-heading img{height:45px;width:45px;border-radius:12px}.install-steps{gap:6px;font-size:11px;margin:12px 0}.install-note{margin:10px 0}}
 @media(prefers-reduced-motion:reduce){.uno-button-art{transition:none!important;animation:none!important}}
+
+.home-view{display:flex;align-items:center;justify-content:center;gap:12px;margin:0 auto 10px}.home-view>span,.settings-view>span{font-size:10px;color:#c3e7f5}.view-choices{display:flex;align-items:center;gap:3px;border-radius:12px;padding:3px;background:#10385b88;border:1px solid #9ddff455;max-width:290px}.view-choice{padding:7px 17px;border:0;border-radius:8px;background:transparent;color:#c7e9f7;font-size:11px;font-weight:800;cursor:pointer;min-height:34px}.view-choice.selected{background:linear-gradient(#ffe99b,#ffc852);color:#71491b;box-shadow:0 2px 0 #a16d25}.settings-view{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0}.dialog-view .view-choices{margin:24px auto}.dialog-view>.game-button{margin-top:22px}.dialog-view{max-width:370px}
+@media(max-width:650px){.home-view{gap:9px;margin-bottom:8px}.view-choice{padding:6px 15px;font-size:10px;min-height:32px}}
+@media(max-height:520px) and (orientation:landscape){.home-view{gap:8px;margin:2px auto 6px}.view-choice{min-height:28px;padding:4px 14px;font-size:10px}.home-view>span{font-size:9px}.dialog-view .view-choices{margin:16px auto}.dialog-view>.game-button{margin-top:16px}}
+
+.voice-tests{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:14px 0 6px}.voice-test{font-size:10px;font-weight:700;padding:9px 4px;min-height:34px;border:1px solid #7fc2e36b;border-radius:8px;color:#effbff;background:#1b6395;cursor:pointer}.voice-test:active{background:#2984b5}.voice-test-note{font-size:9px;color:#b6d8eb;margin:6px 0 15px;text-align:center}
+
+@media(max-height:520px) and (orientation:landscape){
+  body:not(.in-game) main{padding:0 20px;max-width:1100px}
+  .site-header{height:52px;padding:6px 18px}.header-profile{padding:4px 8px;min-width:0;max-width:210px}.header-profile .avatar{width:30px;height:30px}.header-profile strong{font-size:10px}.header-profile small{font-size:6px}.header-profile .profile-edit{font-size:14px}.site-header .brand{scale:.7}.header-right{gap:10px}.score-chip{font-size:15px}.score-chip .icon{height:20px;width:20px}.score-chip b{font-size:15px}.icon-button{width:29px;height:29px}
+  .home-screen{height:calc(100svh - 52px);min-height:0;max-width:100%;padding:12px 0 8px;display:grid;grid-template-columns:148px minmax(0,1fr) 92px;grid-template-rows:minmax(0,1fr) 34px 12px;gap:6px 14px;align-items:center;overflow:hidden}
+  .home-intro{grid-column:1;grid-row:1;text-align:left;align-self:center}.home-intro h1{font-size:21px;line-height:1.55;margin:10px 0}.home-intro p{font-size:8px;line-height:1.8}.lobby-eyebrow{font-size:5px;letter-spacing:1.1px}
+  .mode-cards{grid-column:2;grid-row:1;display:flex;justify-content:center;align-items:center;gap:18px;margin:0;width:100%;max-width:none;min-height:0;align-self:center;flex:initial}
+  .mode-card{height:min(230px,calc(100svh - 126px));min-height:0;width:145px;max-width:46%;padding:10px 8px;flex:0 1 145px;border-width:4px;border-radius:18px;gap:0}.mode-pill{font-size:7px;padding:5px 10px;top:-13px}.mode-illustration{height:95px;width:100%;flex-shrink:0}.card-illustration .card{--card-w:47px;--card-h:70px}.mode-illustration .house-art{height:102px;width:124px;max-width:115%}.mode-card>strong{font-size:16px;margin:3px 0 0;line-height:1.4}.mode-card>small{font-size:6px;line-height:1.4;margin:5px 0 8px;white-space:normal}.mode-go{font-size:7px;padding:5px 9px;margin:0;line-height:1.2}.mode-go .icon{width:12px;height:12px}
+  .home-view{grid-column:1;grid-row:2;margin:0;gap:6px;justify-content:start}.home-view>span{font-size:8px}.home-view .view-choices{gap:1px;padding:2px}.home-view .view-choice{padding:4px 8px;min-height:26px;font-size:9px}
+  .home-bottom{grid-column:3;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;margin:0;padding:0;width:100%;align-self:center}.home-bottom .lobby-utility{font-size:7px;gap:3px}.home-bottom .lobby-utility>span{height:30px;width:30px}.home-bottom .lobby-utility .icon{height:23px;width:23px}.home-bottom .start-audio-button{font-size:8px;padding:7px 8px;gap:4px;min-height:30px}.home-bottom .start-audio-button .icon{width:14px;height:14px}
+  .home-screen>.install-link{grid-column:2;grid-row:2;margin:0 auto;padding:5px 13px;font-size:9px;min-height:27px}.home-screen>.fan-note{grid-column:1 / 4;grid-row:3;position:static;font-size:6px;line-height:1.2;margin:0;text-align:center}
+  .dialog-game-settings{width:min(470px,calc(100% - 40px));padding:16px 20px;max-height:calc(100svh - 24px);overflow-y:auto}.dialog-game-settings .dialog-head{margin:0 0 9px}.dialog-game-settings .dialog-head h2{font-size:18px;min-width:0}.dialog-game-settings .game-setting-summary{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:9px;margin:12px 0}.dialog-game-settings .dialog-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}.dialog-game-settings .dialog-buttons>button{font-size:10px;min-height:36px;padding:6px 10px;margin:0;width:100%}.dialog-game-settings .dialog-buttons>.quiet-button{grid-row:2;grid-column:2}.dialog-game-settings .settings-view{grid-row:3;grid-column:1 / 3;margin:3px 0 0;justify-content:center}.dialog-game-settings .view-choice{min-height:30px;padding:5px 17px}.rotate-screen-button{display:flex;align-items:center;justify-content:center;width:28px;height:28px;min-height:28px;bottom:6px;right:12px;padding:5px;border-radius:9px;background:#75522d80}.rotate-screen-button>.icon{width:16px;height:16px}.rotate-screen-button>span{display:none}
+}
+
+/* Side opponents keep a clear vertical lane above the portrait action buttons. */
+@media(max-width:650px) and (orientation:portrait){
+  .opponent-seat.left,.opponent-seat.right{top:18%}
+  .hand-crowded .opponent-seat.left,.hand-crowded .opponent-seat.right{top:9%}
+  .opponent-seat.top .opponent-count{right:-10px}
+}
+@media(max-width:650px) and (max-height:680px) and (orientation:portrait){
+  .opponent-seat.left,.opponent-seat.right{top:14%}
+  .hand-crowded .opponent-seat.left,.hand-crowded .opponent-seat.right{top:7%}
+}
+
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}

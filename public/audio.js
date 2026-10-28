@@ -1,7 +1,8 @@
-import { THEMES } from './themes.js?v=1.5';
-import { VOICE_FILE,VOICE_CLIPS } from './voice-clips.js?v=1.5';
+import { THEMES } from './themes.js?v=1.6';
+import { VOICE_FILE,VOICE_CLIPS } from './voice-clips.js?v=1.6';
+import { VariationBag } from './variations.js?v=1.6';
 // Quiet paper effects, native MP3 music and short Japanese game calls.
-export const JAPANESE_CALLS={red:'レッド！',yellow:'イエロー！',green:'グリーン！',blue:'ブルー！',reverse:'リバース！',uno:'ウノ！'};
+export const JAPANESE_CALLS={red:'レッド！',yellow:'イエロー！',green:'グリーン！',blue:'ブルー！',reverse:'リバース！',skip:'スキップ！',uno:'ウノ！'};
 export class PartyAudio {
   constructor(){
     let saved={};try{saved=JSON.parse(localStorage.getItem('uno-audio')||'{}');}catch{}
@@ -10,6 +11,7 @@ export class PartyAudio {
       musicVolume:volume(saved.musicVolume,24),effectsVolume:volume(saved.effectsVolume,50),voiceVolume:volume(saved.voiceVolume,85)};
     this.ctx=null;this.bgm=null;this.testAudio=null;this.visible=typeof document==='undefined'||!document.hidden;
     this.hasGesture=false;this.bgmError='';this.contextError='';this.voiceError='';this.listeners=new Set();
+    this.voiceChoices=new VariationBag();this.effectChoices=new VariationBag();
     this.voiceQueue=[];this.voiceBusy=null;this.voiceBuffer=null;this.voiceLoading=null;this.voiceMedia=null;this.theme=0;
 
   }
@@ -54,7 +56,7 @@ export class PartyAudio {
   startMusic(){
     if(!this.hasGesture||!this.visible||!this.settings.music||this.settings.musicVolume===0)return;
     try{
-      if(!this.bgm){this.bgm=new Audio(THEMES[this.theme].music+'?v=1.5');this.bgm.loop=true;this.bgm.preload='auto';this.bgm.setAttribute('playsinline','');
+      if(!this.bgm){this.bgm=new Audio(THEMES[this.theme].music+'?v=1.6');this.bgm.loop=true;this.bgm.preload='auto';this.bgm.setAttribute('playsinline','');
         this.bgm.addEventListener('playing',()=>{this.bgmError='';this.notify();});this.bgm.addEventListener('pause',()=>this.notify());
         this.bgm.addEventListener('error',()=>{this.bgmError='音楽を読み込めません。ページを再読み込みしてね';this.notify();});}
       this.apply();if(this.bgm.paused)Promise.resolve(this.bgm.play()).then(()=>{if(!this.visible||!this.settings.music||!this.settings.musicVolume)this.bgm.pause();this.bgmError='';this.notify();},()=>{this.bgmError='「音を開始」をタップしてね';this.notify();});
@@ -62,10 +64,10 @@ export class PartyAudio {
   }
   setTheme(index){
     const next=Number.isInteger(index)&&index>=0&&index<THEMES.length?index:0;if(next===this.theme)return;
-    this.theme=next;if(this.bgm){this.bgm.pause();this.bgm.src=THEMES[next].music+'?v=1.5';this.bgm.currentTime=0;this.bgm.load?.();this.bgmError='';if(this.settings.music&&this.visible)this.startMusic();}
+    this.theme=next;if(this.bgm){this.bgm.pause();this.bgm.src=THEMES[next].music+'?v=1.6';this.bgm.currentTime=0;this.bgm.load?.();this.bgmError='';if(this.settings.music&&this.visible)this.startMusic();}
   }
   stopMusic(){this.bgm?.pause();}
-  async test(){this.unlock({gesture:true});try{this.testAudio ||=new Audio('/assets/audio/sound-test.mp3?v=1.5');this.testAudio.setAttribute('playsinline','');this.testAudio.volume=.6;this.testAudio.currentTime=0;await this.testAudio.play();return true;}catch{return false;}}
+  async test(){this.unlock({gesture:true});try{this.testAudio ||=new Audio('/assets/audio/sound-test.mp3?v=1.6');this.testAudio.setAttribute('playsinline','');this.testAudio.volume=.6;this.testAudio.currentTime=0;await this.testAudio.play();return true;}catch{return false;}}
   primeVoice(){
     if(this.voiceBusy||this.voiceMedia&&!this.voiceError)return;
     try{
@@ -83,13 +85,16 @@ export class PartyAudio {
   }
   announce(name){
     if(!VOICE_CLIPS[name]||!this.settings.voices||!this.settings.voiceVolume||!this.hasGesture||!this.visible)return false;
-    if(this.voiceBusy?.name===name||this.voiceQueue.some(c=>c.name===name))return false;
+    if(this.voiceQueue.some(c=>c.name===name))return false;
     this.voiceQueue.push({name,at:Date.now()});if(this.voiceQueue.length>3)this.voiceQueue.shift();this.pumpVoice();return true;
   }
   pumpVoice(){
     if(this.voiceBusy||!this.visible||!this.settings.voices||!this.settings.voiceVolume||!this.hasGesture)return;
     this.voiceQueue=this.voiceQueue.filter(c=>Date.now()-c.at<2400);const call=this.voiceQueue[0];if(!call||!this.voiceBuffer&&this.voiceLoading)return;
-    const clip=VOICE_CLIPS[call.name],busy={name:call.name};
+    if(!(this.voiceBuffer&&this.ctx?.state==='running')&&!(this.voiceMedia&&this.voiceMedia.readyState!==0))return;
+    const variants=VOICE_CLIPS[call.name];
+    const variant=this.voiceChoices.next(call.name,variants.length);
+    const clip=variants[variant],busy={name:call.name,variant};
     const done=()=>{if(this.voiceBusy!==busy)return;clearTimeout(busy.timer);this.voiceBusy=null;this.apply();this.notify();this.pumpVoice();};
     try{
       if(this.voiceBuffer&&this.ctx?.state==='running'){
@@ -116,12 +121,14 @@ export class PartyAudio {
     if(['click','turn','start','error','uno'].includes(name))return;
     if(!this.visible||!this.ctx||!this.settings.effects||this.ctx.state!=='running')return;
     const t=this.ctx.currentTime;
-    if(['tick','tick-match'].includes(name)){if(this.settings.alerts)this.tone(880,t,.045,'sine',.14);return;}
-    if(name==='slam'){this.tone(95,t,.34,'sine',.9,this.effectsGain,38);this.tone(175,t+.015,.18,'triangle',.22,this.effectsGain,90);this.hiss(t,.16,.34,1100,'lowpass');this.hiss(t,.04,.18,3500);return;}
-    if(name==='win'){this.tone(660,t,.18,'sine',.18);this.tone(880,t+.15,.3,'sine',.15);return;}
+    const variant=this.effectChoices.next(name);
+    const v=[{pitch:.94,length:.95,brightness:.88,body:1},{pitch:1.03,length:.86,brightness:1.16,body:.94},{pitch:.99,length:1.08,brightness:.96,body:1.04},{pitch:1.08,length:.91,brightness:1.07,body:.9},{pitch:.97,length:1.03,brightness:1.22,body:.98}][variant];
+    if(['tick','tick-match'].includes(name)){if(this.settings.alerts)this.tone(880*v.pitch,t,.045*v.length,'sine',.14*v.body);return;}
+    if(name==='slam'){this.tone(95*v.pitch,t,.34*v.length,'sine',.9,this.effectsGain,38*v.pitch);this.tone(175*v.pitch,t+.015,.18,'triangle',.22*v.body,this.effectsGain,90);this.hiss(t,.16*v.length,.34,1100*v.brightness,'lowpass');this.hiss(t,.04,.18,3500*v.brightness);return;}
+    if(name==='win'){this.tone([660,698,622,740,659][variant],t,.18,'sine',.18);this.tone([880,932,831,988,1046][variant],t+.15,.3*v.length,'sine',.15);return;}
     if(['deal','play','draw','reverse','skip','wild'].includes(name)){
-      this.hiss(t,name==='draw'?.085:.055,name==='deal'?.10:.16,1600);
-      this.tone(name==='draw'?320:420,t,.035,'triangle',name==='deal'?.08:.12,this.effectsGain,250);
+      this.hiss(t,(name==='draw'?.085:.055)*v.length,(name==='deal'?.10:.16)*v.body,1600*v.brightness);
+      this.tone((name==='draw'?320:name==='skip'?520:name==='reverse'?380:420)*v.pitch,t,.035*v.length,'triangle',(name==='deal'?.08:.12)*v.body,this.effectsGain,250*v.pitch);
     }
   }
   visibility(visible){this.visible=visible;if(!visible){this.stopMusic();this.testAudio?.pause();this.cancelVoices();this.voiceMedia?.pause();try{Promise.resolve(this.ctx?.suspend()).then(()=>{if(this.visible)this.unlock();},()=>{});}catch{}}

@@ -19,7 +19,7 @@ export function eventVoices(events) {
   for (const e of events) {
     if (e.type === 'uno') calls.push('uno');
     if (e.type === 'play') {
-      const action = e.card?.value==='reverse'?'reverse':null;
+      const action = ['reverse','skip'].includes(e.card?.value)?e.card.value:null;
       if (action) calls.push(action);
       if (e.card?.color === 'wild' && ['red','yellow','green','blue'].includes(e.color)) calls.push(e.color);
       if (e.announceUno ?? e.uno) calls.push('uno');

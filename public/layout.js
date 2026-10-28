@@ -2,8 +2,10 @@
 export function fitHand(count,width,height){
   const n=Math.max(0,Math.min(108,Math.floor(count)||0)),portrait=height>=width;
   const available=Math.max(240,Math.min(portrait?width-20:width*.61,920));
-  const rows=Math.max(1,Math.ceil(n/12)),perRow=Math.max(1,Math.ceil(n/rows));
-  const maxHeight=Math.min(portrait?260:160,height*(portrait?.31:.41));
+  const rows=Math.max(1,Math.ceil(n/(portrait?12:20))),perRow=Math.max(1,Math.ceil(n/rows));
+  // A short landscape table needs a clear lane between the discard and hand.
+  // Use more columns before extra rows, keeping exposed upper-left corners.
+  const maxHeight=Math.min(portrait?260:128,height*(portrait?.31:.285));
   const preferred=n>56?76:n>42?86:n>28?92:n>12?96:n>10?92:portrait?100:90;
   const cardWidth=Math.max(18,Math.min(preferred,(available-36)/(1+.24*(perRow-1)),maxHeight/(1.5+.24*(rows-1))));
   const cardHeight=cardWidth*1.5,rowStep=cardWidth*.24,placements=[];
