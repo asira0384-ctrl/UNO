@@ -1,41 +1,36 @@
 {
   "original": true,
-  "instruments": "synthesized damped strings and breath flute; no samples",
+  "instruments": "soft breath flute and very quiet sustained air; no plucked strings",
   "tracks": [
     {
       "name": "木漏れ日の庭",
       "file": "/assets/audio/hub-shogi-1.mp3",
-      "bpm": 72,
       "duration": 60,
-      "sha256": "27c9ba40184d9c4a92920bcbf5bf5b5a3abfdddfee5483bdc7d3ee62dd4f42e9"
+      "sha256": "57628f62fe4769e391bad44f6e362f1705ca46592f84b72e1247a319e8038b07"
     },
     {
-      "name": "月影の琴",
+      "name": "月影の笛",
       "file": "/assets/audio/hub-shogi-2.mp3",
-      "bpm": 64,
       "duration": 60,
-      "sha256": "7012232ecb69ff1e2540dffc16b7c7dd37204e6a36aadf239595ffbd13c5875c"
+      "sha256": "8b53da0ccab5442329034dddfdc19ba7440271a90781de366daf9a5235333eb5"
     },
     {
       "name": "竹の風",
       "file": "/assets/audio/hub-shogi-3.mp3",
-      "bpm": 68,
       "duration": 60,
-      "sha256": "200c52960f1ab026cc89d2595f311905326cfaf96980079d88107d77cb29678a"
+      "sha256": "c17a9e0f3f0246e4f77c13a0e739c5a6779df72ec077e744eedfcb6c622ce9bd"
     },
     {
       "name": "花灯り",
       "file": "/assets/audio/hub-shogi-4.mp3",
-      "bpm": 80,
       "duration": 60,
-      "sha256": "fdbadf74a63837ebb015e775c59831260ee0fac5a5c58fe2c06066c62799736b"
+      "sha256": "b0037ea1d9ee0112d21106465b4d038dc303175a429863f3190ea914782ad636"
     },
     {
       "name": "水面の調べ",
       "file": "/assets/audio/hub-shogi-5.mp3",
-      "bpm": 60,
       "duration": 60,
-      "sha256": "37cdd97f61e0b5abea172cbbea7118ede78445d4766a43ca7d13a1a32bc70d4d"
+      "sha256": "35ba20a8c5aa0ae349f1d08ed78a638875a126c33bec577638bbaabec7a9f4c7"
     }
   ]
 }

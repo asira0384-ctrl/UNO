@@ -1,106 +1,94 @@
-# PARTY ROOM v2.1 — GitHub / Railway 設定
+# PARTY ROOM v2.2 — GitHub / Railway 設定
 
-今までのUNOを9ゲームのハブにした更新版です。既存リポジトリに上書きできます。
-Discordの設定が終わるまでは、ログイン画面が表示され、ゲームに参加できません。
+Discordの設定は不要になりました。名前・ID・パスワード・アイコンでアカウントを作成します。
+既存のゲーム、パーティー、フレンド、チャットはそのまま使えます。
 
 ## 1. GitHubへアップロード
 
-ZIPを解凍し、**中身をリポジトリ直下**に入れてください。
-ZIPそのものや、解凍した親フォルダーをそのままアップロードしないでください。
+ZIPを解凍し、**中身をリポジトリ直下**へ上書きします。
+ZIPそのものや、解凍した親フォルダーはアップロードしません。
 
-GitHubブラウザー画面の100ファイル制限に合わせ、次の順で別々にUpload filesします。
+GitHubのブラウザーでアップロードする場合は、次の4回に分けます。
 
-1. 直下のファイルと `src`・`scripts`・`tests` フォルダー
-2. `public` フォルダー
-3. `public1` フォルダー
-4. `public2` フォルダー
+1. 直下のファイルと `src`・`scripts`・`tests`
+2. `public`
+3. `public1`
+4. `public2`
 
-`public` は画面コード、`public1` は画像、`public2` はサウンドです。それぞれ90ファイル未満です。
-フォルダー名の小文字を保ってください。**`Public`へ名前を変えないでください。**
-3つのフォルダーをサーバーが同じWebサイトとして配信するため、音や画像のURLは変わりません。
-旧バージョンの使われないファイルが残っていても起動に使いません。`server.js` も新しいサーバーを起動する互換入口に更新済みです。
+どのまとまりも90ファイル未満です。フォルダー名は全て小文字のまま使ってください。
+`public` は画面、`public1` は画像、`public2` はサウンドです。同じサイトとして配信されます。
+以前の使われないファイルが残っていても、新しい画面はそちらを読み込みません。
 
-## 2. Discordアプリを作成
+## 2. Railwayに入れる値
 
-1. https://discord.com/developers/applications で **New Application** を作成。
-2. General Informationの **Application ID** を控える → `DISCORD_CLIENT_ID`。
-3. OAuth2の **Client Secret** を発行・コピー → `DISCORD_CLIENT_SECRET`。
-4. Botの画面でBotを作り、**Token** を発行・コピー → `DISCORD_BOT_TOKEN`。
-5. Discordの「ユーザー設定 → 詳細設定 → 開発者モード」をON。自分のサーバーを右クリック／長押しし「サーバーIDをコピー」 → `DISCORD_GUILD_ID`。
-6. OAuth2 URL Generatorで **bot** を選択。Bot Permissionsは **Create Instant Invite（招待を作成）** を選び、生成されたURLを開いて**自分のサーバーにBotを追加**。
-7. OAuth2 → Redirectsに、次のURLを追加して保存。
+デプロイするサービスのVariablesへ、次の3つを入れます。
 
-   `https://あなたのドメイン/auth/discord/callback`
-
-Botは、OAuth2でログインするアプリと**同じDiscordアプリ**のものを使ってください。
-この実装は `identify` と `guilds.join` のみで、Discordのメール・DM・フレンド一覧は取得しません。
-ゲームのフレンド一覧はゲーム内で申請・承認する別の一覧です。
-特権Gateway IntentやAdministrator権限は不要です。
-
-## 3. Railway Variables
-
-| 変数名 | 入れる値 |
+| 変数名 | 値 |
 | --- | --- |
-| `APP_URL` | `https://あなたのドメイン`（末尾の `/` なし） |
-| `DISCORD_CLIENT_ID` | Application ID |
-| `DISCORD_CLIENT_SECRET` | OAuth2のClient Secret |
-| `DISCORD_BOT_TOKEN` | BotのToken |
-| `DISCORD_GUILD_ID` | 参加先のサーバーID |
-| `DISCORD_GUILD_NAME` | ログイン画面に表示するサーバー名 |
+| `APP_URL` | 自分の公開URL。例：`https://example.up.railway.app`（末尾の `/` なし） |
 | `DATA_DIR` | `/data` |
 | `NODE_ENV` | `production` |
 
-SecretとTokenは**RailwayのVariablesに直接入力**してください。GitHubのファイルにも、チャットにも貼らなくて大丈夫です。
-`APP_URL` のドメインと、Discordに登録するRedirectのドメインは完全にそろえてください。
+DiscordのClient ID・Secret・Bot Token・サーバーIDは、新しいアカウント機能に必要ありません。
+以前のDiscordアカウントへログインし直して移行したい場合だけ、既存のDiscord変数を残してください。
+パスワードやBot TokenをGitHubやチャットに書く必要はありません。
 
-### Railwayサービス設定
+## 3. データ保存
 
-| 項目 | 設定 |
+サービスにVolumeを追加し、マウント先を **`/data`** にします。
+すでに `/data` のVolumeがある場合は、そのまま使います。
+アカウント・アイコン・フレンド・チャット・パーティー・対戦状態をここに保存します。
+**Volumeがないと、再デプロイでアカウントなどが消えます。**
+
+## 4. 起動設定
+
+Dockerfileとrailway.jsonを同梱しているので、通常は自動で設定されます。
+
+| 項目 | 値 |
 | --- | --- |
 | Builder | Dockerfile（自動判定） |
 | Start Command | `npm start`、または空欄でDockerfileのCMDを使用 |
 | Healthcheck Path | `/health` |
 | Replicas | **1** |
-| Volume | マウント先 **`/data`** |
 
-Volumeを付けると、アカウント・フレンド・チャット・パーティー・進行中の対戦を再デプロイ後も保持します。
-この版は1つのサーバーで対戦状態を管理するので、Replicasは1にしてください。
-`DEV_AUTH` は設定不要です。本番環境では開発用ログインは使えません。
+`PORT` はRailwayが渡す値を使うので、自分で追加しません。
+`DEV_AUTH` は追加不要。本番の開発用ログインは無効です。
 
-## 4. 再デプロイして確認
+## 5. 更新後の確認
 
-1. RailwayでDeployが成功したら `/health` が `{"ok":true,"version":"2.1.0"}` を返すことを確認。
-2. ホームの「Discordでログイン」を押し、Discordの確認画面で名前の取得・サーバー参加を許可。
-3. DiscordのID・名前・512pxアイコンがゲームに表示されること、サーバーに参加できることを確認。
-4. 別のDiscordアカウントでもログインし、同じゲームの公開マッチを探す。将棋・オセロ・スピードは2人が集まり次第開始、他は2人以上で約15秒後に開始（最大10人）。CPUは公開マッチに自動追加しません。
-5. フレンド申請→承認→パーティー招待→個人／パーティー／ゲームチャットを確認。
+1. GitHubへの上書きが終わったら、Railwayで新しいデプロイが成功したことを確認します。
+2. 公開URLの `/health` が `{"ok":true,"version":"2.2.0"}` を返せば新しいサーバーです。
+3. ホームの「アカウント作成」で、名前・ID・パスワード・画像を選びます。
+4. 表示された復旧コードを、自分だけが見られる場所へ保存します。
+5. 次からはIDとパスワードでサインイン。右上のプロフィールから変更できます。
 
-Discordがサーバー参加を拒否した場合はログインを完了しません。Botの所属先・Create Instant Invite権限・同じアプリのTokenかを確認してください。サーバーのルール同意画面がある場合はDiscord側で完了してください。
+IDは半角英数字と `_` の3〜20文字（先頭は英数字、大文字・小文字は区別しません）。
+名前は1〜24文字、パスワードは8〜128文字です。
+メアドを登録しないので、パスワードを忘れた時は復旧コードが必要です。
+
+以前のDiscordアカウントでログイン済みの場合は、右上のプロフィールからIDとパスワードを設定してください。
+既存のフレンドや対戦データを同じアカウントで引き継げます。ログアウト済みなら、既存のDiscord設定を残したまま `/auth/discord` で以前のアカウントへログインしてから設定します。
 
 ## アプリとして開く
 
 iPhone：Safariの共有 → ホーム画面に追加。
 Android：Chromeのメニュー → アプリをインストール。
-PWAなのでストアへの登録は不要です。オンライン対戦にはインターネット接続が必要です。
+PWAなのでストア登録は不要です。オンライン対戦にはインターネット接続が必要です。
 
 ## 画面の向き
 
 ホームまたは対戦中の設定 → 自動／縦／横。
-横を選ぶと、スマホ本体を傾けずに横向きのUIを表示します。設定は端末に保存されます。
-16e（390×844）・16（393×852）相当の画面寸法と安全領域を使って確認しています。実機のSafariとDiscord認証の最終確認は上記の設定後に行ってください。
+横を選ぶと、端末を傾けずに横向きのUIを表示します。設定は端末に保存されます。
+iPhone 16e（390×844）・16（393×852）相当の画面寸法と安全領域で縦横の表示を確認しています。
+実機のSafariの音出力は公開先で確認してください。初回は画面をタップし、必要なら設定の「音を開始・再開」を押します。
 
-## 基本ルールと追加ルール
+## 対戦とルール
 
-通常のUNOは1回に1枚。まとめ出しやドローの重ね出しは標準ルールではありません。
-CPU対戦・プライベートゲームの設定で「同じ数字のまとめ出し」等をONにできます。
-公開マッチは同じ標準設定で集めます。
-順位モードは、上がった人から1位・2位…を確定して最後まで続ける、このアプリの追加ルールです。
-公式ラウンド終了モードは1人が上がると終了し、残り全員の手札点を勝者へ加算。次のラウンドで累積500点を目指せます。
+公開マッチはゲーム別です。将棋・オセロ・スピードは2人で開始し、他は2人以上で約15秒後に開始します（最大10人）。公開マッチにCPUは自動追加しません。
+UNOの標準ルールは1回に1枚。まとめ出し・重ね出し・+4自由・UNO必須・全員順位は追加ルールとして設定します。公式ラウンド終了モードは1人が上がると終了し、次のラウンドで累積500点を目指せます。
 
-## 参考にした一次資料
+ルールの参考資料：
 
-- Mattel UNO説明書： https://service.mattel.com/instruction_sheets/W2085.pdf
-- 日本将棋連盟： https://www.shogi.or.jp/match/taikyoku_rules/
-- World Othello Federation： https://www.worldothello.org/about/about-othello/othello-rules/official-rules/english
-- Discord OAuth2： https://docs.discord.com/developers/topics/oauth2
-- Discord Add Guild Member： https://docs.discord.com/developers/resources/guild#add-guild-member
+- Mattel UNO説明書：https://service.mattel.com/instruction_sheets/W2085.pdf
+- 日本将棋連盟：https://www.shogi.or.jp/match/taikyoku_rules/
+- World Othello Federation：https://www.worldothello.org/about/about-othello/othello-rules/official-rules/english

@@ -1,8 +1,8 @@
 {
   "name": "party-room",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
-  "description": "Nine multiplayer and CPU games with Discord accounts, parties, friends and chat.",
+  "description": "Nine games with local accounts, parties, friends and chat.",
   "type": "module",
   "engines": {
     "node": ">=22"

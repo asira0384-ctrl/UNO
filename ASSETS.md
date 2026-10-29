@@ -26,9 +26,13 @@ Eight new background-music tracks (`hub-*.mp3`) were composed and synthesized fr
 
 Assets are split across `public1/assets` (images) and `public2/assets` (audio). The server mounts the same URL namespace from both roots.
 
-## v2.1 shogi update
+## Shogi assets (updated in v2.2)
 
-- `public1/assets/shogi-room-illustrated.webp`: A new illustrated washitsu background generated with the built-in imagegen tool, then encoded as WebP. Final prompt: "A hand-painted, family-friendly Japanese washitsu game room, warm low wooden table, shoji screens and quiet garden; large uncluttered center for a board overlay; no people, text, grid, game pieces or UI; explicitly illustrated rather than photorealistic." The earlier photographic trial is not used or shipped.
+- `public1/assets/shogi-washitsu.svg`: The active v2.2 shogi background, drawn directly as an original SVG illustration of shoji, tatami, a low table and a simple garden. No image generation or photographic texture is used for this new asset. The older image-generated `shogi-room-illustrated.webp` remains as an unused compatibility asset and is not loaded by the shogi screen.
 - `public/shogi.js` and `shogi.css`: Original code-drawn wooden shogi pieces, exact 9×9 grid, board surface and wooden komadai. Each piece is an SVG illustration with clear Japanese characters, bevels and hand-drawn grain; neither photos nor emoji glyphs are used for the pieces.
-- `public2/assets/audio/hub-shogi-1.mp3` through `hub-shogi-5.mp3`: Five different original one-minute compositions, synthesized by `scripts/make-shogi-music.py` from damped strings and a breath flute model. No prerecorded samples or commercial songs. The instruments evoke koto and flute; these are synthesized timbres rather than recordings of traditional instruments.
+- `public2/assets/audio/hub-shogi-1.mp3` through `hub-shogi-5.mp3`: Five different original one-minute compositions, synthesized by `scripts/make-shogi-music.py` from sparse breath-flute tones and quiet sustained air. The v2.2 recordings replace the previous plucked-string arrangements; no plucked or strummed instrument remains. No prerecorded samples or commercial songs; these are synthesized timbres rather than recordings of traditional instruments.
 - `public2/assets/audio/voice/check-1.mp3` through `check-5.mp3`: Five newly synthesized Japanese 王手 deliveries using the same credited Kokoro-82M mixed Japanese voices, with individually adjusted pace and punctuation. These are original generated clips using an existing learned model, not a self-trained model or human actor recordings. Source: `scripts/make-shogi-check.py`; they are included in the updated `voice-calls.mp3` sprite. The full set now contains 40 calls.
+
+## v2.2 Othello and accounts
+
+`public/reversi.js` and `reversi.css` draw the board, stone faces, placement/flip animations and final counting flights in code. The short placement sound is synthesized in Web Audio. No reference-game assets or sound recordings were extracted. Custom profile images are supplied by each account holder, center-cropped to a 256px PNG in the browser and stored in the private application data directory.
