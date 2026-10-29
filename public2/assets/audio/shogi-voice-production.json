@@ -1,0 +1,33 @@
+{
+  "engine": "Kokoro-82M ONNX Japanese neural",
+  "text": "王手",
+  "takes": [
+    {
+      "id": "check-1",
+      "duration": 0.69,
+      "phonemes": "oːte!"
+    },
+    {
+      "id": "check-2",
+      "duration": 0.67,
+      "phonemes": "oːte!"
+    },
+    {
+      "id": "check-3",
+      "duration": 0.7,
+      "phonemes": "oːte."
+    },
+    {
+      "id": "check-4",
+      "duration": 0.68,
+      "phonemes": "oːte!"
+    },
+    {
+      "id": "check-5",
+      "duration": 0.62,
+      "phonemes": "oːte!"
+    }
+  ],
+  "sample_rate": 48000,
+  "not_human_recorded": true
+}
