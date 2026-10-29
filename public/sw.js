@@ -1,4 +1,4 @@
-const CACHE = 'party-room-shell-v2.1';
+const CACHE = 'party-room-shell-v2.2';
 const CORE = ['/offline.html', '/offline.css', '/assets/app/icon-192.png', '/assets/app/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
@@ -9,7 +9,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const request = event.request, url = new URL(request.url);
   // Never cache live hands, Socket.IO requests, cross-origin traffic or media ranges.
-  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/socket.io/') || url.pathname === '/health' || request.headers.has('range')) return;
+  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/') || url.pathname.startsWith('/socket.io/') || url.pathname === '/health' || request.headers.has('range')) return;
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).catch(() => caches.match('/offline.html')));
     return;

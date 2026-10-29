@@ -1,5 +1,5 @@
 /* A quiet illustrated washitsu, with a board that fills the usable screen. */
-.shogi-screen{padding:0 clamp(10px,2vw,34px);background:linear-gradient(#3e332b16,#44321f22),url('/assets/shogi-room-illustrated.webp') center 59%/cover;color:#fff7df}
+.shogi-screen{padding:0 clamp(10px,2vw,34px);background:linear-gradient(#4534240d,#45342412),url('/assets/shogi-washitsu.svg') center/cover;color:#fff7df}
 .shogi-screen .match-top{height:54px;max-width:1500px;width:100%;margin:0 auto;color:#fff8e4;text-shadow:0 1px 3px #3c2a1cb0}
 .shogi-screen .match-top>b{font:700 20px 'Yu Mincho','Hiragino Mincho ProN',serif;letter-spacing:.35em}
 .shogi-screen .match-top .round{background:#42312672;border:1px solid #fff2d55c;backdrop-filter:blur(5px)}

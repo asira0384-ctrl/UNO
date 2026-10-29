@@ -1,0 +1,45 @@
+.account-gate{width:min(1050px,100%);min-height:100%;margin:auto;display:grid;grid-template-columns:1fr 420px;align-items:center;gap:65px;padding:30px 36px 50px}
+.account-welcome h1{font-size:43px;line-height:1.45;letter-spacing:.04em;margin:18px 0}
+.account-welcome p{font-size:13px;line-height:2;color:#d7ebef}
+.account-game-art{display:flex;align-items:center;margin:22px -10px 24px}
+.account-game-art .game-art{width:135px;height:145px;margin-right:-20px;rotate:-8deg}
+.account-game-art .game-art:nth-child(2){rotate:6deg;translate:0 -8px}
+.account-card{background:#fff8e8;color:#294c60;border:1px solid #e8e0c6;border-radius:22px;padding:26px;box-shadow:0 15px 50px #0d345a2b}
+.account-tabs{display:flex;gap:8px;padding:4px;background:#e9ede5;border-radius:12px;margin-bottom:24px}
+.account-tabs button{flex:1;border:0;border-radius:9px;padding:9px 8px;font-size:12px;font-weight:700;background:transparent;color:#6a7c80}
+.account-tabs button.active{background:#fffdf3;color:#33596b;box-shadow:0 2px 6px #24495b13}
+.account-card h2{font-size:23px;margin:0 0 9px}
+.account-caption{font-size:11px;line-height:1.8;color:#7c8b8c;margin:0 0 20px}
+[data-account-form]{display:flex;flex-direction:column;gap:0}
+[data-account-form]>label{display:block;margin:12px 0 7px!important;font-size:11px!important;color:inherit}
+[data-account-form]>input{width:100%;border:1px solid #b5c8c5;border-radius:10px;background:#fffef8;color:#294c60;padding:10px 12px;min-height:41px;box-sizing:border-box;font-size:13px}
+[data-account-form]>input:focus{outline:2px solid #bad9d5;outline-offset:1px;border-color:#709c97}
+.account-field-note{font-size:9px!important;line-height:1.7;margin:5px 0 0;color:#7d9295}
+.account-error{min-height:17px;font-size:11px;color:#c05046;line-height:1.65;margin:11px 0 9px;overflow-wrap:anywhere}
+.account-submit{margin-top:2px!important}
+.account-forgot{display:block;border:0;background:none;color:#70898e;font-size:10px;margin:17px auto 0;padding:5px}
+.account-avatar-editor{display:flex;align-items:center;gap:15px;margin:4px 0 12px}
+.account-avatar-preview{width:61px;height:61px;border-radius:15px;border:2px solid #e8cf8c;object-fit:cover;background:#e5e9dc;flex:none}
+.account-avatar-editor>div{flex:1;min-width:0}
+.account-avatar-editor small{display:block;font-size:9px;line-height:1.65;color:#8a9b9b;margin-top:8px}
+.account-image-pick{display:inline-block!important;position:relative;overflow:hidden;border:1px solid #a5bfbc;border-radius:8px;background:#ecf1e6;color:#3a6265;padding:7px 13px;font-size:11px!important;margin:0!important;cursor:pointer}
+.account-image-pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.account-presets{display:flex;gap:6px;margin:0 0 8px;flex-wrap:wrap}
+.account-presets button{width:31px;height:31px;border:1px solid transparent;background:none;padding:0;border-radius:9px}
+.account-presets img{width:100%;height:100%;display:block;border-radius:7px;object-fit:cover}
+.account-presets button.selected{border-color:#f1ce70;box-shadow:0 0 0 2px #f1ce70}
+.account-dialog .dialog-body{padding-bottom:22px}
+.account-dialog [data-account-form]>input{background:#174f73;color:#fff7de;border-color:#83b4c26b}
+.account-dialog .account-field-note,.account-dialog .account-avatar-editor small{color:#b6d2d8}
+.account-dialog .account-image-pick{color:#e5f2ed;background:#356e82;border-color:#87b4bb}
+.account-dialog .account-error{color:#ffbf9b}
+.account-password-section{border-top:1px solid #94c2c13b;margin-top:23px;padding-top:16px}
+.account-password-section summary{font-size:12px;cursor:pointer;color:#ffe5ac}
+.account-password-section form{padding-top:6px}
+.account-migrate{font-size:11px;line-height:1.8;color:#e4eac7}
+.account-logout{margin:22px 0 0;padding:9px 0}
+.account-recovery-note{font-size:12px;line-height:1.95;color:#d8ebec;margin:2px 0 20px}
+.account-recovery-value{display:block;overflow-wrap:anywhere;border:1px solid #b1ccbb70;background:#123f59;padding:15px;border-radius:12px;color:#ffe4a2;font:700 15px/1.8 ui-monospace,monospace;letter-spacing:.04em;margin:0 0 16px;user-select:text}
+.account-dialog .btn+.btn{margin-top:12px}
+@media(max-width:750px){.account-gate{display:flex;flex-direction:column;align-items:stretch;gap:18px;padding:17px 20px 32px;max-width:460px}.account-welcome .eyebrow,.account-game-art,.account-welcome .orient{display:none}.account-welcome h1{font-size:23px;line-height:1.4;margin:0 0 7px}.account-welcome h1 br{display:none}.account-welcome p{font-size:10px;line-height:1.7;margin:0}.account-welcome p br{display:none}.account-card{padding:20px;border-radius:18px}.account-tabs{margin-bottom:20px}.account-card h2{font-size:21px}.account-avatar-preview{height:53px;width:53px;border-radius:13px}.account-presets{gap:5px}.account-presets button{width:29px;height:29px}.account-dialog .account-avatar-preview{height:61px;width:61px}.account-card [data-account-form]>input{font-size:16px;min-height:41px}.account-caption{margin-bottom:13px}.account-dialog [data-account-form]>input{font-size:16px}.account-dialog .dialog-body{padding-bottom:19px}}
+@media(orientation:landscape) and (max-height:520px){.account-gate{display:grid;grid-template-columns:minmax(0,1fr) minmax(290px,370px);align-items:start;gap:27px;max-width:950px;padding:12px 24px 24px}.account-welcome h1{font-size:25px;margin:25px 0 12px}.account-welcome p{font-size:10px}.account-welcome .orient{display:flex}.account-game-art{display:none}.account-card{padding:17px}.account-card h2{font-size:19px}.account-tabs{margin-bottom:14px}.account-tabs button{font-size:10px;padding:7px}.account-caption{font-size:9px;margin-bottom:11px}.account-avatar-preview{height:45px;width:45px}.account-presets button{width:25px;height:25px}.account-avatar-editor{margin-bottom:7px}.account-card [data-account-form]>input{font-size:12px;min-height:34px;padding:8px 10px}.account-card [data-account-form]>label{margin-top:8px!important;font-size:10px!important}.account-card .btn{min-height:34px;font-size:11px}}
