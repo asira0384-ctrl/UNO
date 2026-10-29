@@ -1,0 +1,1 @@
+import {execFileSync} from 'node:child_process';import {readdirSync} from 'node:fs';const files=['hub-server.js',...['src','public','tests'].flatMap(dir=>readdirSync(dir).filter(f=>f.endsWith('.js')).map(f=>dir+'/'+f))];for(const file of files)execFileSync(process.execPath,['--check',file]);console.log(`${files.length} JavaScript files checked`);

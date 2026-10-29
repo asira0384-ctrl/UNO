@@ -16,3 +16,12 @@
 ## Background prompt
 
 Use case: stylized-concept. Asset type: background art for a mobile online card game, landscape 2.16:1 composition, high-quality original 3D casual game environment. A large EMPTY oval honey maple wooden card table, seen from a high three-quarter top-down angle, almost filling the frame, with an elegant thick rounded beveled wooden rim. The light warm tabletop is clean, smooth, with fine subtle woodgrain and ample empty playing space in the whole center and bottom half. Four cozy terracotta upholstered chairs sit around the OUTSIDE edges; a friendly cozy game room with small books, a muted red carpet and wooden floor is only visible around the far periphery. Warm inviting soft studio-like lighting, polished rounded 3D mobile game rendering, detailed but visually calm. The empty tabletop is the hero and occupies about 85 percent of the image width and 88 percent of the height, centered, extending near the bottom so UI cards can overlay. No writing, no logos, NO playing cards, NO UI, NO buttons, NO game pieces, NO people, NO avatars, NO currency, NO numbers, NO watermarks. Original environment art, not a screenshot.
+
+
+## v2 game hub additions
+
+`public/hub-ui.js` contains the original code-drawn game illustrations and UI symbols. No emoji glyphs or external icon fonts are used. The application icon is an original vector design with PNG renditions.
+
+Eight new background-music tracks (`hub-*.mp3`) were composed and synthesized from oscillators using `scripts/make-hub-music.py`. Each track has five 60-second sections, a separate tempo, scale and instrument profile. No prerecorded samples or third-party songs are used. The existing five UNO tracks and the 35 synthesized voice calls are retained. The speech uses the credited Kokoro learned model; the model itself is not a newly trained in-house model or a human actor recording.
+
+Assets are split across `public1/assets` (images) and `public2/assets` (audio). The server mounts the same URL namespace from both roots.
