@@ -1,10 +1,10 @@
-const CACHE = 'uno-party-shell-v1.6';
+const CACHE = 'party-room-shell-v2.0';
 const CORE = ['/offline.html', '/offline.css', '/assets/app/icon-192.png', '/assets/app/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('uno-party-shell-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => (key.startsWith('uno-party-shell-')||key.startsWith('party-room-shell-')) && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', event => {
   const request = event.request, url = new URL(request.url);

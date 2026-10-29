@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "UNO PARTY",
-  "short_name": "UNO PARTY",
-  "description": "友達と遊べるオンラインカードゲーム",
+  "name": "PARTY ROOM",
+  "short_name": "PARTY ROOM",
+  "description": "9種類のゲームとフレンド・パーティー",
   "lang": "ja",
   "start_url": "/?app=1",
   "scope": "/",

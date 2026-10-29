@@ -1,0 +1,183 @@
+{
+  "engine": "Kokoro-82M ONNX",
+  "model_origin": "https://huggingface.co/hexgrad/Kokoro-82M",
+  "count": 35,
+  "sample_rate": 48000,
+  "clips": [
+    {
+      "id": "red-1",
+      "seconds": 0.728,
+      "peak": 0.7988
+    },
+    {
+      "id": "red-2",
+      "seconds": 0.738,
+      "peak": 0.7775
+    },
+    {
+      "id": "red-3",
+      "seconds": 0.748,
+      "peak": 0.78
+    },
+    {
+      "id": "red-4",
+      "seconds": 0.738,
+      "peak": 0.7457
+    },
+    {
+      "id": "red-5",
+      "seconds": 0.718,
+      "peak": 0.832
+    },
+    {
+      "id": "blue-1",
+      "seconds": 0.688,
+      "peak": 0.7351
+    },
+    {
+      "id": "blue-2",
+      "seconds": 0.658,
+      "peak": 0.7826
+    },
+    {
+      "id": "blue-3",
+      "seconds": 0.688,
+      "peak": 0.8151
+    },
+    {
+      "id": "blue-4",
+      "seconds": 0.698,
+      "peak": 0.7147
+    },
+    {
+      "id": "blue-5",
+      "seconds": 0.668,
+      "peak": 0.767
+    },
+    {
+      "id": "yellow-1",
+      "seconds": 0.718,
+      "peak": 0.7139
+    },
+    {
+      "id": "yellow-2",
+      "seconds": 0.678,
+      "peak": 0.7227
+    },
+    {
+      "id": "yellow-3",
+      "seconds": 0.738,
+      "peak": 0.7187
+    },
+    {
+      "id": "yellow-4",
+      "seconds": 0.698,
+      "peak": 0.6812
+    },
+    {
+      "id": "yellow-5",
+      "seconds": 0.678,
+      "peak": 0.6997
+    },
+    {
+      "id": "green-1",
+      "seconds": 0.798,
+      "peak": 0.7695
+    },
+    {
+      "id": "green-2",
+      "seconds": 0.768,
+      "peak": 0.7465
+    },
+    {
+      "id": "green-3",
+      "seconds": 0.798,
+      "peak": 0.776
+    },
+    {
+      "id": "green-4",
+      "seconds": 0.778,
+      "peak": 0.7177
+    },
+    {
+      "id": "green-5",
+      "seconds": 0.758,
+      "peak": 0.8006
+    },
+    {
+      "id": "reverse-1",
+      "seconds": 0.868,
+      "peak": 0.8604
+    },
+    {
+      "id": "reverse-2",
+      "seconds": 0.828,
+      "peak": 0.877
+    },
+    {
+      "id": "reverse-3",
+      "seconds": 0.888,
+      "peak": 0.8631
+    },
+    {
+      "id": "reverse-4",
+      "seconds": 0.838,
+      "peak": 0.8604
+    },
+    {
+      "id": "reverse-5",
+      "seconds": 0.838,
+      "peak": 0.8709
+    },
+    {
+      "id": "skip-1",
+      "seconds": 0.848,
+      "peak": 0.7933
+    },
+    {
+      "id": "skip-2",
+      "seconds": 0.828,
+      "peak": 0.7723
+    },
+    {
+      "id": "skip-3",
+      "seconds": 0.868,
+      "peak": 0.8017
+    },
+    {
+      "id": "skip-4",
+      "seconds": 0.838,
+      "peak": 0.7551
+    },
+    {
+      "id": "skip-5",
+      "seconds": 0.798,
+      "peak": 0.8197
+    },
+    {
+      "id": "uno-1",
+      "seconds": 0.668,
+      "peak": 0.6424
+    },
+    {
+      "id": "uno-2",
+      "seconds": 0.648,
+      "peak": 0.65
+    },
+    {
+      "id": "uno-3",
+      "seconds": 0.668,
+      "peak": 0.6493
+    },
+    {
+      "id": "uno-4",
+      "seconds": 0.638,
+      "peak": 0.648
+    },
+    {
+      "id": "uno-5",
+      "seconds": 0.608,
+      "peak": 0.6693
+    }
+  ]
+}
