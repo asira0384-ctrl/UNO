@@ -1,4 +1,4 @@
-const CACHE = 'party-room-shell-v2.0';
+const CACHE = 'party-room-shell-v2.1';
 const CORE = ['/offline.html', '/offline.css', '/assets/app/icon-192.png', '/assets/app/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));

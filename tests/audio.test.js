@@ -108,3 +108,14 @@ test('two quick skips keep one follow-up call without overlapping or growing an 
   assert.equal(a.announce('skip'),true);assert.equal(a.announce('skip'),false);assert.equal(a.voiceQueue.length,1);
   a.voiceBusy.source.onended();assert.equal(a.voiceBusy.name,'skip');assert.notEqual(a.voiceBusy.variant,first);assert.equal(a.voiceQueue.length,0);
 });
+
+test('Shogi cycles through five separate wa tracks and keeps volume and mute across them',async t=>{
+ const a=setup(t);a.unlock({gesture:true});a.set('musicVolume',41);a.setGame('shogi');const files=[];
+ for(let i=0;i<5;i++){a.setTheme(i);files.push(a.bgm.src);assert.match(a.bgm.src,new RegExp('hub-shogi-'+(i+1)));assert.equal(a.settings.musicVolume,41);}
+ assert.equal(new Set(files).size,5);a.set('music',false);a.setTheme(0);await settle();assert.equal(a.bgm.paused,true);
+});
+test('王手 uses five real Japanese takes and follows the independent voice switch',async t=>{
+ const a=setup(t,{loadVoices:true});a.unlock({gesture:true});await a.voiceLoading;const takes=[];
+ for(let i=0;i<5;i++){assert.equal(a.announce('check'),true);takes.push(a.voiceBusy.variant);a.voiceBusy.source.onended();}
+ assert.equal(new Set(takes).size,5);a.set('voices',false);assert.equal(a.announce('check'),false);
+});
