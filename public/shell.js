@@ -1,5 +1,5 @@
-import {framePlan,viewMode} from './viewport.js?v=2.2';
-import {AppInstall} from './install.js?v=2.2';
+import {framePlan,viewMode} from './viewport.js?v=2.3';
+import {AppInstall} from './install.js?v=2.3';
 const frame=document.querySelector('#game-frame'),stage=document.querySelector('#game-stage');
 let mode='auto';try{mode=viewMode(JSON.parse(localStorage.getItem('uno-view')));}catch{}
 const installer=new AppInstall(sendInstallState);installer.register();

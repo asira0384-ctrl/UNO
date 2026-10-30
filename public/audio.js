@@ -1,6 +1,6 @@
-import { THEMES } from './themes.js?v=2.2';
-import { VOICE_FILE,VOICE_CLIPS } from './voice-clips.js?v=2.2';
-import { VariationBag } from './variations.js?v=2.2';
+import { THEMES } from './themes.js?v=2.3';
+import { VOICE_FILE,VOICE_CLIPS } from './voice-clips.js?v=2.3';
+import { VariationBag } from './variations.js?v=2.3';
 export const SHOGI_MUSIC=['木漏れ日の庭','月影の笛','竹の風','花灯り','水面の調べ'].map((name,i)=>({name,file:'/assets/audio/hub-shogi-'+(i+1)+'.mp3'}));
 // Quiet paper effects, native MP3 music and short Japanese game calls.
 export const JAPANESE_CALLS={red:'レッド！',yellow:'イエロー！',green:'グリーン！',blue:'ブルー！',reverse:'リバース！',skip:'スキップ！',uno:'ウノ！',check:'王手！'};
@@ -57,7 +57,7 @@ export class PartyAudio {
   startMusic(){
     if(!this.hasGesture||!this.visible||!this.settings.music||this.settings.musicVolume===0)return;
     try{
-      if(!this.bgm){this.bgm=new Audio((this.gameMusic||THEMES[this.theme].music)+'?v=2.2');this.bgm.loop=true;this.bgm.preload='auto';this.bgm.setAttribute('playsinline','');
+      if(!this.bgm){this.bgm=new Audio((this.gameMusic||THEMES[this.theme].music)+'?v=2.3');this.bgm.loop=true;this.bgm.preload='auto';this.bgm.setAttribute('playsinline','');
         this.bgm.addEventListener('playing',()=>{this.bgmError='';this.notify();});this.bgm.addEventListener('pause',()=>this.notify());
         this.bgm.addEventListener('error',()=>{this.bgmError='音楽を読み込めません。ページを再読み込みしてね';this.notify();});}
       this.apply();if(this.bgm.paused)Promise.resolve(this.bgm.play()).then(()=>{if(!this.visible||!this.settings.music||!this.settings.musicVolume)this.bgm.pause();this.bgmError='';this.notify();},()=>{this.bgmError='「音を開始」をタップしてね';this.notify();});
@@ -65,18 +65,18 @@ export class PartyAudio {
   }
   setTheme(index){
     const next=Number.isInteger(index)&&index>=0&&index<THEMES.length?index:0;if(next===this.theme)return;
-    this.theme=next;if(this.currentGame==='shogi'){this.changeMusic(SHOGI_MUSIC[next].file);return;}if(this.gameMusic)return;if(this.bgm){this.bgm.pause();this.bgm.src=THEMES[next].music+'?v=2.2';this.bgm.currentTime=0;this.bgm.load?.();this.bgmError='';if(this.settings.music&&this.visible)this.startMusic();}
+    this.theme=next;if(this.currentGame==='shogi'){this.changeMusic(SHOGI_MUSIC[next].file);return;}if(this.gameMusic)return;if(this.bgm){this.bgm.pause();this.bgm.src=THEMES[next].music+'?v=2.3';this.bgm.currentTime=0;this.bgm.load?.();this.bgmError='';if(this.settings.music&&this.visible)this.startMusic();}
   }
   changeMusic(track){
     if(track===this.gameMusic)return;this.gameMusic=track;
-    if(this.bgm){this.bgm.pause();this.bgm.src=(track||THEMES[this.theme].music)+'?v=2.2';this.bgm.currentTime=0;this.bgm.load?.();this.bgmError='';this.startMusic();}
+    if(this.bgm){this.bgm.pause();this.bgm.src=(track||THEMES[this.theme].music)+'?v=2.3';this.bgm.currentTime=0;this.bgm.load?.();this.bgmError='';this.startMusic();}
   }
   setGame(game){
     this.currentGame=game;
     this.changeMusic(game==='shogi'?SHOGI_MUSIC[this.theme].file:['reversi','oldmaid','president','poker','speed','memory','blackjack'].includes(game)?'/assets/audio/hub-'+game+'.mp3':null);
   }
   stopMusic(){this.bgm?.pause();}
-  async test(){this.unlock({gesture:true});try{this.testAudio ||=new Audio('/assets/audio/sound-test.mp3?v=2.2');this.testAudio.setAttribute('playsinline','');this.testAudio.volume=.6;this.testAudio.currentTime=0;await this.testAudio.play();return true;}catch{return false;}}
+  async test(){this.unlock({gesture:true});try{this.testAudio ||=new Audio('/assets/audio/sound-test.mp3?v=2.3');this.testAudio.setAttribute('playsinline','');this.testAudio.volume=.6;this.testAudio.currentTime=0;await this.testAudio.play();return true;}catch{return false;}}
   primeVoice(){
     if(this.voiceBusy||this.voiceMedia&&!this.voiceError)return;
     try{
@@ -133,6 +133,11 @@ export class PartyAudio {
     const variant=this.effectChoices.next(name);
     const v=[{pitch:.94,length:.95,brightness:.88,body:1},{pitch:1.03,length:.86,brightness:1.16,body:.94},{pitch:.99,length:1.08,brightness:.96,body:1.04},{pitch:1.08,length:.91,brightness:1.07,body:.9},{pitch:.97,length:1.03,brightness:1.22,body:.98}][variant];
     if(['tick','tick-match'].includes(name)){if(this.settings.alerts)this.tone(880*v.pitch,t,.045*v.length,'sine',.14*v.body);return;}
+    if(name==='reversi-count'){this.tone(480*v.pitch,t,.030,'sine',.065*v.body,this.effectsGain,290);this.hiss(t,.012,.028,1800,'bandpass');return;}
+    if(name==='oldmaid-pick'){this.hiss(t,.065*v.length,.08,2100*v.brightness,'highpass');return;}
+    if(name==='oldmaid-draw'){this.hiss(t,.032,.10,1700,'bandpass');this.tone(310*v.pitch,t,.028,'triangle',.07,this.effectsGain,220);return;}
+    if(name==='oldmaid-pair'){this.hiss(t,.045,.11,1900,'highpass');this.hiss(t+.07,.04,.08,1600,'bandpass');this.tone(560*v.pitch,t+.07,.10,'sine',.065);return;}
+    if(name==='oldmaid-reveal'){this.hiss(t,.08,.07,1300,'bandpass');this.tone(220*v.pitch,t,.26,'sine',.10);this.tone(330*v.pitch,t+.09,.24,'sine',.075);this.tone(440*v.pitch,t+.18,.36,'sine',.06);return;}
     if(name==='reversi-place'){this.tone(390*v.pitch,t,.065*v.length,'sine',.13*v.body,this.effectsGain,270);this.hiss(t,.025,.045,1400,'bandpass');return;}
     if(name==='shogi-piece'){this.hiss(t,.022*v.length,.10,2000*v.brightness,'bandpass');this.tone(880*v.pitch,t,.047,'triangle',.15*v.body,this.effectsGain,620);this.tone(1460*v.pitch,t+.002,.026,'sine',.07);return;}
     if(name==='slam'){this.tone(95*v.pitch,t,.34*v.length,'sine',.9,this.effectsGain,38*v.pitch);this.tone(175*v.pitch,t+.015,.18,'triangle',.22*v.body,this.effectsGain,90);this.hiss(t,.16*v.length,.34,1100*v.brightness,'lowpass');this.hiss(t,.04,.18,3500*v.brightness);return;}

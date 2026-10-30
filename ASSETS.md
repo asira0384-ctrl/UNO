@@ -36,3 +36,11 @@ Assets are split across `public1/assets` (images) and `public2/assets` (audio). 
 ## v2.2 Othello and accounts
 
 `public/reversi.js` and `reversi.css` draw the board, stone faces, placement/flip animations and final counting flights in code. The short placement sound is synthesized in Web Audio. No reference-game assets or sound recordings were extracted. Custom profile images are supplied by each account holder, center-cropped to a 256px PNG in the browser and stored in the private application data directory.
+
+## v2.3 lobby and card table
+
+- `public1/assets/reversi-studio.svg`: Original code-drawn room for Othello, with a green window, abstract black/white art, a plant and a wooden table. Uses the same restrained vector illustration approach as shogi, with a different setting and design. No generated bitmap or copied reference artwork.
+- `public1/assets/oldmaid-room.svg`: Original lavender game-room illustration drawn in SVG.
+- `public/lobby.js` / `lobby.css`: Original party lobby, using the existing original avatar images and game illustrations. No Fortnite art or other game assets are included.
+- `public/oldmaid.js` / `oldmaid.css`: Radial player seating, curved card fans, draw/pair/discard animations and final joker presentation made in code.
+- The new Othello count landings and old-maid card/joker sounds are synthesized by the project's Web Audio code. No reference soundtrack recordings were extracted.
